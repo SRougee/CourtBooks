@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CourtBooks.Console/CourtBooks.Console.csproj" />
+  <Project Path="CourtBooks.Core/CourtBooks.Core.csproj" />
+</Solution>
