@@ -1,1 +1,9 @@
-﻿Console.WriteLine("Hello, World!");
+﻿using System;
+
+namespace CourtBooks.Console
+{
+    public string Program(string[] args)
+    {
+
+    }
+}

@@ -15,5 +15,16 @@ namespace CourtBooks.Core
         {
 
         }
+
+        public static class CoachDetails
+        {
+            public static List<Coach>  tblCoaches {  get; private set; } = new List<Coach>();
+
+            public static void ClearAll()
+            {
+                tblCoaches.Clear();
+            }
+        }
+
     }
 }
