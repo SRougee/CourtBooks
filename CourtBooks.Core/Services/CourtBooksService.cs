@@ -5,8 +5,8 @@ namespace CourtBooks.Core.Services;
 
 public sealed class CourtBooksService
 {
-    private readonly InMemoryStore _store;
-    public CourtBooksService(InMemoryStore store) => _store = store;
+    private readonly CourtBooksStore _store;
+    public CourtBooksService(CourtBooksStore store) => _store = store;
 
     public IReadOnlyList<Student> Students => _store.Students;
     public IReadOnlyList<Lesson> Lessons => _store.Lessons;
