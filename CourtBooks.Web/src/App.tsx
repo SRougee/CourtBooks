@@ -13,6 +13,24 @@ type Student = {
   Active: number;
 };
 
+type StudentForm = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  dateOfBirth: string;
+  notes: string;
+};
+
+const emptyStudentForm: StudentForm = {
+  firstName: "",
+  lastName: "",
+  phone: "",
+  email: "",
+  dateOfBirth: "",
+  notes: ""
+};
+
 const pages: { id: Page; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "students", label: "Students" },
@@ -115,6 +133,8 @@ function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
   async function loadStudents() {
     setLoading(true);
@@ -145,6 +165,81 @@ function StudentsPage() {
     void loadStudents();
   }, []);
 
+  function openAddForm() {
+    setEditingStudent(null);
+    setFormOpen(true);
+  }
+
+  function openEditForm(student: Student) {
+    setEditingStudent(student);
+    setFormOpen(true);
+  }
+
+  function closeForm() {
+    setFormOpen(false);
+    setEditingStudent(null);
+  }
+
+  async function saveStudent(form: StudentForm) {
+    const isEditing = editingStudent !== null;
+    const url = isEditing ? `/api/students/${editingStudent.Id}` : "/api/students";
+    const method = isEditing ? "PUT" : "POST";
+
+    const response = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form)
+    });
+
+    const payload: unknown = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const message =
+        typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof payload.error === "string"
+          ? payload.error
+          : `Unable to save student (HTTP ${response.status}).`;
+
+      throw new Error(message);
+    }
+
+    closeForm();
+    await loadStudents();
+  }
+
+  async function toggleStudent(student: Student) {
+    const response = await fetch(`/api/students/${student.Id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        firstName: student.FirstName,
+        lastName: student.LastName,
+        phone: student.Phone,
+        email: student.Email,
+        dateOfBirth: student.DateOfBirth,
+        notes: student.Notes,
+        active: !Boolean(student.Active)
+      })
+    });
+
+    if (!response.ok) {
+      const payload: unknown = await response.json().catch(() => null);
+      const message =
+        typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof payload.error === "string"
+          ? payload.error
+          : `Unable to update student (HTTP ${response.status}).`;
+      setError(message);
+      return;
+    }
+
+    await loadStudents();
+  }
+
   return (
     <section>
       <div className="page-heading">
@@ -153,7 +248,7 @@ function StudentsPage() {
           <h1>Students</h1>
           <p className="muted">Students currently stored in your CourtBooks database.</p>
         </div>
-        <button className="primary-button">Add student</button>
+        <button className="primary-button" onClick={openAddForm}>Add student</button>
       </div>
 
       <div className="card students-card">
@@ -198,12 +293,121 @@ function StudentsPage() {
                     <span>{student.Email}</span>
                   </div>
                 </div>
+                <div className="student-actions">
+                  <button className="secondary-button compact-button" onClick={() => openEditForm(student)}>Edit</button>
+                  <button className="text-button compact-button" onClick={() => void toggleStudent(student)}>
+                    {student.Active ? "Deactivate" : "Activate"}
+                  </button>
+                </div>
               </article>
             ))}
           </div>
         )}
       </div>
+
+      {formOpen && (
+        <StudentFormModal
+          student={editingStudent}
+          onClose={closeForm}
+          onSave={saveStudent}
+        />
+      )}
     </section>
+  );
+}
+
+function StudentFormModal({
+  student,
+  onClose,
+  onSave
+}: {
+  student: Student | null;
+  onClose: () => void;
+  onSave: (form: StudentForm) => Promise<void>;
+}) {
+  const [form, setForm] = useState<StudentForm>(() =>
+    student
+      ? {
+          firstName: student.FirstName,
+          lastName: student.LastName,
+          phone: student.Phone,
+          email: student.Email,
+          dateOfBirth: student.DateOfBirth,
+          notes: student.Notes
+        }
+      : emptyStudentForm
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function updateField(field: keyof StudentForm, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+
+    try {
+      await onSave(form);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save student.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="student-form-title">
+        <div className="modal-heading">
+          <div>
+            <p className="eyebrow">Students</p>
+            <h2 id="student-form-title">{student ? "Edit student" : "Add student"}</h2>
+          </div>
+          <button className="text-button" onClick={onClose} disabled={saving}>Close</button>
+        </div>
+
+        <form className="student-form" onSubmit={submit}>
+          <div className="form-grid">
+            <label>
+              First name
+              <input value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} required maxLength={100} />
+            </label>
+            <label>
+              Last name
+              <input value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} required maxLength={100} />
+            </label>
+            <label>
+              Phone
+              <input value={form.phone} onChange={(event) => updateField("phone", event.target.value)} required maxLength={30} />
+            </label>
+            <label>
+              Email
+              <input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} required maxLength={254} />
+            </label>
+            <label>
+              Date of birth
+              <input type="date" value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} required />
+            </label>
+            <label className="full-width">
+              Notes
+              <textarea value={form.notes} onChange={(event) => updateField("notes", event.target.value)} maxLength={2000} rows={4} />
+            </label>
+          </div>
+
+          {error && <div className="form-error">{error}</div>}
+
+          <div className="modal-actions">
+            <button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button type="submit" className="primary-button" disabled={saving}>
+              {saving ? "Saving..." : student ? "Save changes" : "Add student"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
