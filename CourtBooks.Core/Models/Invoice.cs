@@ -14,10 +14,17 @@ public sealed class Invoice
 
     public void RecordPayment(decimal amount)
     {
+        if (Status == InvoiceStatus.Cancelled) throw new InvalidOperationException("Cancelled invoices cannot receive payments.");
         if (amount <= 0) throw new ArgumentOutOfRangeException(nameof(amount), "Payment must be greater than zero.");
         if (amount > Balance) throw new InvalidOperationException("Payment exceeds invoice balance.");
         AmountPaid += amount;
         Status = Balance == 0 ? InvoiceStatus.Paid : InvoiceStatus.PartiallyPaid;
+    }
+
+    public void Cancel()
+    {
+        if (AmountPaid > 0) throw new InvalidOperationException("Paid or partially paid invoices cannot be cancelled.");
+        Status = InvoiceStatus.Cancelled;
     }
 
     public void MarkOverdue(DateOnly today)
