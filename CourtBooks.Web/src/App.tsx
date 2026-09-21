@@ -1,6 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Page = "dashboard" | "students" | "schedule" | "curriculum" | "invoices" | "reports";
+
+type Student = {
+  Id: number;
+  FirstName: string;
+  LastName: string;
+  Phone: string;
+  Email: string;
+  DateOfBirth: string;
+  Notes: string;
+  Active: number;
+};
 
 const pages: { id: Page; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -39,7 +50,7 @@ function App() {
 
         <main className="content">
           {page === "dashboard" && <Dashboard />}
-          {page === "students" && <Placeholder title="Students" description="Student management will connect to the CourtBooks API in the next phase." />}
+          {page === "students" && <StudentsPage />}
           {page === "schedule" && <Placeholder title="Schedule" description="Lesson scheduling will connect to the CourtBooks API in the next phase." />}
           {page === "curriculum" && <Placeholder title="Curriculum" description="Curriculum progress will connect to the CourtBooks API in the next phase." />}
           {page === "invoices" && <Placeholder title="Invoices" description="Invoices and payments will connect to the CourtBooks API in the next phase." />}
@@ -97,6 +108,102 @@ function Dashboard() {
         </article>
       </section>
     </>
+  );
+}
+
+function StudentsPage() {
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function loadStudents() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/students");
+
+      if (!response.ok) {
+        throw new Error(`Unable to load students (HTTP ${response.status}).`);
+      }
+
+      const data: unknown = await response.json();
+
+      if (!Array.isArray(data)) {
+        throw new Error("The API returned an unexpected response.");
+      }
+
+      setStudents(data as Student[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load students.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadStudents();
+  }, []);
+
+  return (
+    <section>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">CourtBooks</p>
+          <h1>Students</h1>
+          <p className="muted">Students currently stored in your CourtBooks database.</p>
+        </div>
+        <button className="primary-button">Add student</button>
+      </div>
+
+      <div className="card students-card">
+        <div className="card-heading">
+          <div>
+            <h2>Student register</h2>
+            {!loading && !error && <p className="card-subtitle">{students.length} student{students.length === 1 ? "" : "s"}</p>}
+          </div>
+          <button className="text-button" onClick={() => void loadStudents()} disabled={loading}>
+            {loading ? "Loading" : "Refresh"}
+          </button>
+        </div>
+
+        {loading && <p className="state-message">Loading students from Cloudflare D1...</p>}
+
+        {!loading && error && (
+          <div className="state-message error-state">
+            <strong>Could not load students</strong>
+            <span>{error}</span>
+            <button className="secondary-button" onClick={() => void loadStudents()}>Try again</button>
+          </div>
+        )}
+
+        {!loading && !error && students.length === 0 && (
+          <p className="state-message">No students have been added yet.</p>
+        )}
+
+        {!loading && !error && students.length > 0 && (
+          <div className="student-list">
+            {students.map((student) => (
+              <article className="student-row" key={student.Id}>
+                <div className="student-avatar" aria-hidden="true">
+                  {student.FirstName.charAt(0)}{student.LastName.charAt(0)}
+                </div>
+                <div className="student-main">
+                  <div className="student-name-line">
+                    <h3>{student.FirstName} {student.LastName}</h3>
+                    <span className={student.Active ? "status-badge active-status" : "status-badge"}>{student.Active ? "Active" : "Inactive"}</span>
+                  </div>
+                  <div className="student-details">
+                    <span>{student.Phone}</span>
+                    <span>{student.Email}</span>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
