@@ -152,6 +152,19 @@ app.post("/api/lessons", async (c) => {
     return c.json({ error: "Active student not found." }, 404);
   }
 
+  const startMs = Date.parse(startUtc);
+  const endMs = startMs + durationMinutes * 60 * 1000;
+  const overlapping = await c.env.DB
+    .prepare(
+      "SELECT Id FROM Lessons WHERE Status = 0 AND StartUtc < ? AND datetime(StartUtc, '+' || DurationMinutes || ' minutes') > ? LIMIT 1"
+    )
+    .bind(new Date(endMs).toISOString(), startUtc)
+    .first();
+
+  if (overlapping) {
+    return c.json({ error: "The lesson overlaps an existing lesson." }, 409);
+  }
+
   const result = await c.env.DB
     .prepare(
       "INSERT INTO Lessons (StudentId, StartUtc, DurationMinutes, HourlyRate, Location, Notes, Status) VALUES (?, ?, ?, ?, ?, ?, ?)"
