@@ -24,6 +24,21 @@ public sealed class CourtBooksService
     public Lesson ScheduleLesson(int studentId, DateTime start, int durationMinutes, decimal hourlyRate, string location = "", string notes = "")
         => _store.AddLesson(new Lesson { StudentId = studentId, Start = start, DurationMinutes = durationMinutes, HourlyRate = hourlyRate, Location = location, Notes = notes });
 
+    public InvoicePayment RecordPayment(int invoiceId, decimal amount, DateTime? paidOn = null)
+    {
+        var invoice = _store.Invoices.SingleOrDefault(x => x.Id == invoiceId) ?? throw new KeyNotFoundException("Invoice not found.");
+        invoice.RecordPayment(amount);
+        var payment = new InvoicePayment
+        {
+            Id = _store.Payments.Count == 0 ? 1 : _store.Payments.Max(x => x.Id) + 1,
+            InvoiceId = invoiceId,
+            Amount = amount,
+            PaidOn = paidOn ?? DateTime.Now
+        };
+        _store.Payments.Add(payment);
+        return payment;
+    }
+
     public void UpdateLessonStatus(int lessonId, LessonStatus status)
     {
         var lesson = _store.Lessons.SingleOrDefault(x => x.Id == lessonId) ?? throw new KeyNotFoundException("Lesson not found.");
