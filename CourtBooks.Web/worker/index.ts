@@ -155,6 +155,10 @@ app.post("/api/lessons", async (c) => {
   const startMs = Date.parse(startUtc);
   const endMs = startMs + durationMinutes * 60 * 1000;
 
+  if (startMs <= Date.now()) {
+    return c.json({ error: "Lesson start time must be in the future." }, 400);
+  }
+
   const scheduledLessons = await c.env.DB
     .prepare("SELECT Id, StartUtc, DurationMinutes FROM Lessons WHERE Status = 0")
     .all();
