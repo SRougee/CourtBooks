@@ -1,0 +1,19 @@
+name: Build and test
+
+on:
+  push:
+    branches: [ master, "feature/**" ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - run: dotnet restore CourtBooks.slnx
+      - run: dotnet build CourtBooks.slnx --configuration Release --no-restore
+      - run: dotnet test CourtBooks.slnx --configuration Release --no-build
