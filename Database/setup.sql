@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS InvoicePayments (
     InvoiceId INTEGER NOT NULL,
     Amount NUMERIC NOT NULL,
     PaidOn TEXT NOT NULL,
+    Method INTEGER NOT NULL DEFAULT 4,
+    Reference TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (InvoiceId) REFERENCES Invoices(Id)
 );
 
