@@ -122,6 +122,21 @@ public sealed class CourtBooksServiceTests
     }
 
     [Fact]
+    public void RecordPayment_CreatesPaymentHistory()
+    {
+        var store = new CourtBooksStore();
+        var service = new CourtBooksService(store);
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+        var invoice = service.InvoiceStudent(student.Id, 1200, DateOnly.FromDateTime(DateTime.Today));
+
+        service.RecordPayment(invoice.Id, 500, new DateTime(2026, 9, 21, 10, 0, 0));
+
+        Assert.Single(store.Payments);
+        Assert.Equal(500, store.Payments[0].Amount);
+        Assert.Equal(invoice.Id, store.Payments[0].InvoiceId);
+    }
+
+    [Fact]
     public void SqliteStore_PersistsStudentsAcrossStoreInstances()
     {
         var path = Path.Combine(Path.GetTempPath(), $"courtbooks-{Guid.NewGuid():N}.db");
