@@ -67,7 +67,7 @@ public sealed class CourtBooksSettingsTests
 
         try
         {
-            Assert.Throws<System.Text.Json.JsonReaderException>(() => CourtBooksSettings.Load(path));
+            Assert.ThrowsAny<JsonException>(() => CourtBooksSettings.Load(path));
         }
         finally
         {
