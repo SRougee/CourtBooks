@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 type Page = "dashboard" | "students" | "schedule" | "curriculum" | "invoices" | "reports";
 
@@ -19,6 +19,28 @@ type StudentForm = {
   phone: string;
   email: string;
   dateOfBirth: string;
+  notes: string;
+};
+
+type Lesson = {
+  Id: number;
+  StudentId: number;
+  FirstName: string;
+  LastName: string;
+  StartUtc: string;
+  DurationMinutes: number;
+  HourlyRate: number;
+  Location: string;
+  Notes: string;
+  Status: number;
+};
+
+type LessonForm = {
+  studentId: string;
+  startUtc: string;
+  durationMinutes: string;
+  hourlyRate: string;
+  location: string;
   notes: string;
 };
 
@@ -69,7 +91,7 @@ function App() {
         <main className="content">
           {page === "dashboard" && <Dashboard />}
           {page === "students" && <StudentsPage />}
-          {page === "schedule" && <Placeholder title="Schedule" description="Lesson scheduling will connect to the CourtBooks API in the next phase." />}
+          {page === "schedule" && <SchedulePage />}
           {page === "curriculum" && <Placeholder title="Curriculum" description="Curriculum progress will connect to the CourtBooks API in the next phase." />}
           {page === "invoices" && <Placeholder title="Invoices" description="Invoices and payments will connect to the CourtBooks API in the next phase." />}
           {page === "reports" && <Placeholder title="Reports" description="Reports will connect to the CourtBooks API in the next phase." />}
@@ -406,6 +428,300 @@ function StudentFormModal({
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+const lessonStatusLabels = ["Scheduled", "Completed", "Cancelled", "No-show"];
+
+function formatLessonDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function SchedulePage() {
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+
+  async function loadSchedule() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [lessonsResponse, studentsResponse] = await Promise.all([
+        fetch("/api/lessons"),
+        fetch("/api/students")
+      ]);
+
+      if (!lessonsResponse.ok || !studentsResponse.ok) {
+        throw new Error("Unable to load schedule data.");
+      }
+
+      const lessonData: unknown = await lessonsResponse.json();
+      const studentData: unknown = await studentsResponse.json();
+
+      if (!Array.isArray(lessonData) || !Array.isArray(studentData)) {
+        throw new Error("The API returned an unexpected response.");
+      }
+
+      setLessons(lessonData as Lesson[]);
+      setStudents((studentData as Student[]).filter((student) => Boolean(student.Active)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load schedule.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadSchedule();
+  }, []);
+
+  async function saveLesson(form: LessonForm) {
+    const response = await fetch("/api/lessons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        studentId: Number(form.studentId),
+        startUtc: new Date(form.startUtc).toISOString(),
+        durationMinutes: Number(form.durationMinutes),
+        hourlyRate: Number(form.hourlyRate),
+        location: form.location,
+        notes: form.notes
+      })
+    });
+
+    const payload: unknown = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const message =
+        typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof payload.error === "string"
+          ? payload.error
+          : `Unable to schedule lesson (HTTP ${response.status}).`;
+      throw new Error(message);
+    }
+
+    setFormOpen(false);
+    await loadSchedule();
+  }
+
+  async function updateStatus(lesson: Lesson, status: number) {
+    const response = await fetch(`/api/lessons/${lesson.Id}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+
+    if (!response.ok) {
+      const payload: unknown = await response.json().catch(() => null);
+      const message =
+        typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof payload.error === "string"
+          ? payload.error
+          : `Unable to update lesson (HTTP ${response.status}).`;
+      setError(message);
+      return;
+    }
+
+    await loadSchedule();
+  }
+
+  return (
+    <section>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">CourtBooks</p>
+          <h1>Schedule</h1>
+          <p className="muted">Manage lessons stored in your CourtBooks database.</p>
+        </div>
+        <button className="primary-button" onClick={() => setFormOpen(true)}>Schedule lesson</button>
+      </div>
+
+      <div className="card schedule-card">
+        <div className="card-heading">
+          <div>
+            <h2>Lesson schedule</h2>
+            {!loading && !error && <p className="card-subtitle">{lessons.length} lesson{lessons.length === 1 ? "" : "s"}</p>}
+          </div>
+          <button className="text-button" onClick={() => void loadSchedule()} disabled={loading}>
+            {loading ? "Loading" : "Refresh"}
+          </button>
+        </div>
+
+        {loading && <p className="state-message">Loading lessons from Cloudflare D1...</p>}
+
+        {!loading && error && (
+          <div className="state-message error-state">
+            <strong>Could not load schedule</strong>
+            <span>{error}</span>
+            <button className="secondary-button" onClick={() => void loadSchedule()}>Try again</button>
+          </div>
+        )}
+
+        {!loading && !error && lessons.length === 0 && (
+          <p className="state-message">No lessons have been scheduled yet.</p>
+        )}
+
+        {!loading && !error && lessons.length > 0 && (
+          <div className="lesson-list">
+            {lessons.map((lesson) => (
+              <article className="lesson-row" key={lesson.Id}>
+                <div className="lesson-time">
+                  <strong>{formatLessonDate(lesson.StartUtc)}</strong>
+                  <span>{lesson.DurationMinutes} min</span>
+                </div>
+                <div className="lesson-main">
+                  <div className="student-name-line">
+                    <h3>{lesson.FirstName} {lesson.LastName}</h3>
+                    <span className="status-badge">{lessonStatusLabels[lesson.Status] ?? "Unknown"}</span>
+                  </div>
+                  <div className="student-details">
+                    <span>{lesson.Location}</span>
+                    <span>R {Number(lesson.HourlyRate).toFixed(2)}/hr</span>
+                  </div>
+                </div>
+                <div className="lesson-actions">
+                  {lesson.Status === 0 && (
+                    <>
+                      <button className="secondary-button compact-button" onClick={() => void updateStatus(lesson, 1)}>Complete</button>
+                      <button className="text-button compact-button" onClick={() => void updateStatus(lesson, 2)}>Cancel</button>
+                    </>
+                  )}
+                  {lesson.Status === 2 && (
+                    <button className="text-button compact-button" onClick={() => void updateStatus(lesson, 0)}>Reschedule</button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {formOpen && (
+        <LessonFormModal
+          students={students}
+          onClose={() => setFormOpen(false)}
+          onSave={saveLesson}
+        />
+      )}
+    </section>
+  );
+}
+
+function LessonFormModal({
+  students,
+  onClose,
+  onSave
+}: {
+  students: Student[];
+  onClose: () => void;
+  onSave: (form: LessonForm) => Promise<void>;
+}) {
+  const [form, setForm] = useState<LessonForm>({
+    studentId: students[0]?.Id.toString() ?? "",
+    startUtc: "",
+    durationMinutes: "60",
+    hourlyRate: "0",
+    location: "",
+    notes: ""
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function updateField(field: keyof LessonForm, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+
+    try {
+      await onSave(form);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to schedule lesson.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="lesson-form-title">
+        <div className="modal-heading">
+          <div>
+            <p className="eyebrow">Schedule</p>
+            <h2 id="lesson-form-title">Schedule lesson</h2>
+          </div>
+          <button className="text-button" onClick={onClose} disabled={saving}>Close</button>
+        </div>
+
+        {students.length === 0 ? (
+          <div className="state-message">
+            <strong>No active students available</strong>
+            <span>Add or activate a student before scheduling a lesson.</span>
+          </div>
+        ) : (
+          <form className="student-form" onSubmit={submit}>
+            <div className="form-grid">
+              <label>
+                Student
+                <select value={form.studentId} onChange={(event) => updateField("studentId", event.target.value)} required>
+                  {students.map((student) => (
+                    <option key={student.Id} value={student.Id}>{student.FirstName} {student.LastName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Date and time
+                <input type="datetime-local" value={form.startUtc} onChange={(event) => updateField("startUtc", event.target.value)} required />
+              </label>
+              <label>
+                Duration (minutes)
+                <input type="number" min="15" max="240" step="15" value={form.durationMinutes} onChange={(event) => updateField("durationMinutes", event.target.value)} required />
+              </label>
+              <label>
+                Hourly rate
+                <input type="number" min="0" step="0.01" value={form.hourlyRate} onChange={(event) => updateField("hourlyRate", event.target.value)} required />
+              </label>
+              <label className="full-width">
+                Location
+                <input value={form.location} onChange={(event) => updateField("location", event.target.value)} maxLength={200} required placeholder="Court 1" />
+              </label>
+              <label className="full-width">
+                Notes
+                <textarea value={form.notes} onChange={(event) => updateField("notes", event.target.value)} maxLength={2000} rows={3} />
+              </label>
+            </div>
+
+            {error && <div className="form-error">{error}</div>}
+
+            <div className="modal-actions">
+              <button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Cancel</button>
+              <button type="submit" className="primary-button" disabled={saving}>
+                {saving ? "Saving..." : "Schedule lesson"}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
