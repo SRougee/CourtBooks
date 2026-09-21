@@ -233,7 +233,9 @@ public sealed class CourtBooksStore
     {
         if (string.IsNullOrWhiteSpace(student.FirstName)) throw new ArgumentException("First name is required.");
         if (string.IsNullOrWhiteSpace(student.LastName)) throw new ArgumentException("Last name is required.");
+        ValidateDateOfBirth(student.DateOfBirth);
         if (!string.IsNullOrWhiteSpace(student.Email) && !student.Email.Contains('@')) throw new ArgumentException("Email address is invalid.");
+        EnsureStudentIsUnique(student.Email, student.Phone, null);
 
         var saved = new Student { Id = ++_studentId, FirstName = student.FirstName.Trim(), LastName = student.LastName.Trim(),
             Phone = student.Phone.Trim(), Email = student.Email.Trim(), DateOfBirth = student.DateOfBirth, Notes = student.Notes.Trim(), Active = true };
@@ -245,7 +247,9 @@ public sealed class CourtBooksStore
     {
         if (string.IsNullOrWhiteSpace(firstName)) throw new ArgumentException("First name is required.");
         if (string.IsNullOrWhiteSpace(lastName)) throw new ArgumentException("Last name is required.");
+        ValidateDateOfBirth(dateOfBirth);
         if (!string.IsNullOrWhiteSpace(email) && !email.Contains('@')) throw new ArgumentException("Email address is invalid.");
+        EnsureStudentIsUnique(email, phone, studentId);
 
         var student = Students.SingleOrDefault(x => x.Id == studentId) ?? throw new KeyNotFoundException("Student not found.");
         student.FirstName = firstName.Trim();
@@ -265,7 +269,9 @@ public sealed class CourtBooksStore
 
     public Lesson AddLesson(Lesson lesson)
     {
-        if (!Students.Any(s => s.Id == lesson.StudentId)) throw new ArgumentException("Student does not exist.");
+        var student = Students.SingleOrDefault(s => s.Id == lesson.StudentId) ?? throw new ArgumentException("Student does not exist.");
+        if (!student.Active) throw new InvalidOperationException("Inactive students cannot be scheduled for new lessons.");
+        if (lesson.Start <= DateTime.Now) throw new ArgumentException("New lessons must be scheduled in the future.");
         if (lesson.DurationMinutes <= 0) throw new ArgumentOutOfRangeException(nameof(lesson.DurationMinutes));
         if (lesson.HourlyRate < 0) throw new ArgumentOutOfRangeException(nameof(lesson.HourlyRate));
         if (Lessons.Any(x => x.Status == LessonStatus.Scheduled && x.Start < lesson.Start.AddMinutes(lesson.DurationMinutes) && x.End > lesson.Start))
@@ -277,9 +283,33 @@ public sealed class CourtBooksStore
         return saved;
     }
 
+    private void ValidateDateOfBirth(DateOnly dateOfBirth)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (dateOfBirth > today) throw new ArgumentException("Date of birth cannot be in the future.");
+        if (dateOfBirth < today.AddYears(-100)) throw new ArgumentException("Date of birth is outside the supported age range.");
+    }
+
+    private void EnsureStudentIsUnique(string email, string phone, int? excludeId)
+    {
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var normalizedPhone = NormalizePhone(phone);
+        if (!string.IsNullOrEmpty(normalizedEmail) &&
+            Students.Any(s => s.Id != excludeId && !string.IsNullOrWhiteSpace(s.Email) &&
+                              s.Email.Trim().Equals(normalizedEmail, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("Another student already uses this email address.");
+        if (!string.IsNullOrEmpty(normalizedPhone) &&
+            Students.Any(s => s.Id != excludeId && NormalizePhone(s.Phone) == normalizedPhone))
+            throw new InvalidOperationException("Another student already uses this phone number.");
+    }
+
+    private static string NormalizePhone(string phone)
+        => new string(phone.Where(char.IsDigit).ToArray());
+
     public Invoice CreateInvoice(int studentId, decimal amount, DateOnly issueDate, int paymentTermsDays = 30)
     {
-        if (!Students.Any(s => s.Id == studentId)) throw new ArgumentException("Student does not exist.");
+        var student = Students.SingleOrDefault(s => s.Id == studentId) ?? throw new ArgumentException("Student does not exist.");
+        if (!student.Active) throw new InvalidOperationException("Inactive students cannot receive new invoices.");
         if (amount <= 0) throw new ArgumentOutOfRangeException(nameof(amount));
         if (paymentTermsDays < 0) throw new ArgumentOutOfRangeException(nameof(paymentTermsDays));
 
