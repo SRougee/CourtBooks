@@ -613,7 +613,8 @@ function SchedulePage() {
                 <div className="lesson-actions">
                   {lesson.Status === 0 && (
                     <>
-                      <button className="secondary-button compact-button" onClick={() => openEditLesson(lesson)}>Edit</button>\n                      <button className="secondary-button compact-button" onClick={() => void updateStatus(lesson, 1)}>Complete</button>
+                      <button className="secondary-button compact-button" onClick={() => openEditLesson(lesson)}>Edit</button>
+                      <button className="secondary-button compact-button" onClick={() => void updateStatus(lesson, 1)}>Complete</button>
                       <button className="text-button compact-button" onClick={() => void updateStatus(lesson, 2)}>Cancel</button>
                     </>
                   )}
@@ -630,6 +631,7 @@ function SchedulePage() {
       {formOpen && (
         <LessonFormModal
           students={students}
+          lesson={editingLesson}
           onClose={() => setFormOpen(false)}
           onSave={saveLesson}
         />
@@ -640,10 +642,12 @@ function SchedulePage() {
 
 function LessonFormModal({
   students,
+  lesson,
   onClose,
   onSave
 }: {
   students: Student[];
+  lesson: Lesson | null;
   onClose: () => void;
   onSave: (form: LessonForm) => Promise<void>;
 }) {
