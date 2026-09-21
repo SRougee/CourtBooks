@@ -235,14 +235,43 @@ static void Progress(CourtBooksService app, CourtBooksStore store)
 static void Invoice(CourtBooksService app)
 {
     Console.Clear();
-    Console.WriteLine("CREATE INVOICE");
-    Console.WriteLine("--------------");
+    Console.WriteLine("INVOICING");
+    Console.WriteLine("---------");
+    foreach (var i in app.Invoices)
+    {
+        var student = app.Students.First(s => s.Id == i.StudentId);
+        Console.WriteLine($"{i.InvoiceNumber} | {student.FullName,-24} | {i.Amount,10:C2} | Balance {i.Balance,10:C2} | {i.Status}");
+    }
+
+    Console.WriteLine("\nN = new invoice, C = cancel invoice, M = main menu");
+    Console.Write("Choose: ");
+    var action = Console.ReadLine()?.Trim().ToLowerInvariant();
+    if (action == "m") throw new ReturnToMenuException();
+
+    if (action == "c")
+    {
+        var number = ReadRequired("Invoice number");
+        var invoice = app.Invoices.SingleOrDefault(x => x.InvoiceNumber.Equals(number, StringComparison.OrdinalIgnoreCase))
+            ?? throw new KeyNotFoundException("Invoice not found.");
+        app.CancelInvoice(invoice.Id);
+        Console.WriteLine($"{invoice.InvoiceNumber} cancelled.");
+        Pause();
+        return;
+    }
+
+    if (action != "n")
+    {
+        Pause("Invalid option.");
+        return;
+    }
+
+    Console.WriteLine();
     StudentsMini(app);
     var studentId = ReadInt("Student ID");
     var amount = ReadDecimal("Invoice amount");
     var terms = ReadInt("Payment terms (days)", 30);
-    var invoice = app.InvoiceStudent(studentId, amount, DateOnly.FromDateTime(DateTime.Today), terms);
-    Console.WriteLine($"Created {invoice.InvoiceNumber} for {invoice.Amount:C2}, due {invoice.DueDate:yyyy-MM-dd}.");
+    var invoiceNew = app.InvoiceStudent(studentId, amount, DateOnly.FromDateTime(DateTime.Today), terms);
+    Console.WriteLine($"Created {invoiceNew.InvoiceNumber} for {invoiceNew.Amount:C2}, due {invoiceNew.DueDate:yyyy-MM-dd}.");
     Pause();
 }
 
