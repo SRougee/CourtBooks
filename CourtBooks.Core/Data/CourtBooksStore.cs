@@ -16,6 +16,7 @@ public sealed class CourtBooksStore
     public List<CurriculumStep> Curriculum { get; } = [];
     public List<StudentProgress> Progress { get; } = [];
     public List<Invoice> Invoices { get; } = [];
+    public List<InvoicePayment> Payments { get; } = [];
 
     public void ConfigureDatabase(string connectionString)
     {
@@ -70,11 +71,12 @@ public sealed class CourtBooksStore
                 ("$issue", i.IssueDate.ToString("yyyy-MM-dd")), ("$due", i.DueDate.ToString("yyyy-MM-dd")),
                 ("$amount", i.Amount), ("$status", (int)i.Status));
 
-            if (i.AmountPaid > 0)
-                Execute(connection, transaction,
-                    "INSERT INTO InvoicePayments (InvoiceId, Amount, PaidOn) VALUES ($invoice,$amount,$paid);",
-                    ("$invoice", i.Id), ("$amount", i.AmountPaid), ("$paid", DateTime.Now.ToString("O")));
         }
+
+        foreach (var payment in Payments)
+            Execute(connection, transaction,
+                "INSERT INTO InvoicePayments (Id, InvoiceId, Amount, PaidOn) VALUES ($id,$invoice,$amount,$paid);",
+                ("$id", payment.Id), ("$invoice", payment.InvoiceId), ("$amount", payment.Amount), ("$paid", payment.PaidOn.ToString("O")));
 
         transaction.Commit();
     }
@@ -111,7 +113,7 @@ public sealed class CourtBooksStore
 
     private void Load()
     {
-        Students.Clear(); Lessons.Clear(); Curriculum.Clear(); Progress.Clear(); Invoices.Clear();
+        Students.Clear(); Lessons.Clear(); Curriculum.Clear(); Progress.Clear(); Invoices.Clear(); Payments.Clear();
         _studentId = _lessonId = _invoiceId = 0;
 
         using var connection = new SqliteConnection(_connectionString);
@@ -164,17 +166,36 @@ public sealed class CourtBooksStore
             {
                 var invoice = new Invoice { Id = r.GetInt32(0), StudentId = r.GetInt32(1), InvoiceNumber = r.GetString(2),
                     IssueDate = DateOnly.Parse(r.GetString(3)), DueDate = DateOnly.Parse(r.GetString(4)), Amount = r.GetDecimal(5) };
-                var status = (InvoiceStatus)r.GetInt32(6);
-                if (status == InvoiceStatus.Cancelled) { /* status is intentionally immutable in the MVP */ }
                 Invoices.Add(invoice);
-
-                using var payment = connection.CreateCommand();
-                payment.CommandText = "SELECT COALESCE(SUM(Amount),0) FROM InvoicePayments WHERE InvoiceId=$id";
-                payment.Parameters.AddWithValue("$id", invoice.Id);
-                var paid = Convert.ToDecimal(payment.ExecuteScalar(), CultureInfo.InvariantCulture);
-                if (paid > 0) invoice.RecordPayment(paid);
-                if (status == InvoiceStatus.Overdue) invoice.MarkOverdue(invoice.DueDate.AddDays(1));
             }
+        }
+
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT Id,InvoiceId,Amount,PaidOn FROM InvoicePayments ORDER BY Id";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var payment = new InvoicePayment
+                {
+                    Id = r.GetInt32(0),
+                    InvoiceId = r.GetInt32(1),
+                    Amount = Convert.ToDecimal(r.GetValue(2), CultureInfo.InvariantCulture),
+                    PaidOn = DateTime.Parse(r.GetString(3), null, DateTimeStyles.RoundtripKind)
+                };
+                Payments.Add(payment);
+                var invoice = Invoices.SingleOrDefault(x => x.Id == payment.InvoiceId);
+                invoice?.RecordPayment(payment.Amount);
+            }
+        }
+
+        foreach (var invoice in Invoices)
+        {
+            var storedStatus = invoice.Status;
+            if (storedStatus == InvoiceStatus.Issued || storedStatus == InvoiceStatus.PartiallyPaid)
+                continue;
+            if (storedStatus == InvoiceStatus.Overdue)
+                invoice.MarkOverdue(invoice.DueDate.AddDays(1));
         }
 
         _studentId = Students.Count == 0 ? 0 : Students.Max(x => x.Id);
