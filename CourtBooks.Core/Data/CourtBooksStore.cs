@@ -91,8 +91,8 @@ public sealed class CourtBooksStore
 
         foreach (var payment in Payments)
             Execute(connection, transaction,
-                "INSERT INTO InvoicePayments (Id, InvoiceId, Amount, PaidOn) VALUES ($id,$invoice,$amount,$paid);",
-                ("$id", payment.Id), ("$invoice", payment.InvoiceId), ("$amount", payment.Amount), ("$paid", payment.PaidOn.ToString("O")), ("$method", (int)payment.Method), ("$reference", payment.Reference)));
+                "INSERT INTO InvoicePayments (Id, InvoiceId, Amount, PaidOn, Method, Reference) VALUES ($id,$invoice,$amount,$paid,$method,$reference);",
+                ("$id", payment.Id), ("$invoice", payment.InvoiceId), ("$amount", payment.Amount), ("$paid", payment.PaidOn.ToString("O")), ("$method", (int)payment.Method), ("$reference", payment.Reference));
 
         transaction.Commit();
     }
