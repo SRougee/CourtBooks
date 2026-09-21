@@ -66,6 +66,144 @@ app.get("/api/students", async (c) => {
   return c.json(result.results);
 });
 
+type LessonPayload = {
+  studentId?: unknown;
+  startUtc?: unknown;
+  durationMinutes?: unknown;
+  hourlyRate?: unknown;
+  location?: unknown;
+  notes?: unknown;
+  status?: unknown;
+};
+
+function validateLessonPayload(payload: LessonPayload) {
+  const studentId = Number(payload.studentId);
+  const startUtc = typeof payload.startUtc === "string" ? payload.startUtc.trim() : "";
+  const durationMinutes = Number(payload.durationMinutes);
+  const hourlyRate = Number(payload.hourlyRate);
+  const location = typeof payload.location === "string" ? payload.location.trim() : "";
+  const notes = typeof payload.notes === "string" ? payload.notes.trim() : "";
+  const status = payload.status === undefined ? 0 : Number(payload.status);
+
+  if (!Number.isInteger(studentId) || studentId <= 0) {
+    return { error: "A valid student is required." };
+  }
+
+  if (!startUtc || Number.isNaN(Date.parse(startUtc))) {
+    return { error: "A valid lesson date and time are required." };
+  }
+
+  if (!Number.isInteger(durationMinutes) || durationMinutes < 15 || durationMinutes > 240) {
+    return { error: "Lesson duration must be between 15 and 240 minutes." };
+  }
+
+  if (!Number.isFinite(hourlyRate) || hourlyRate < 0 || hourlyRate > 1000000) {
+    return { error: "Hourly rate must be a valid non-negative amount." };
+  }
+
+  if (!location || location.length > 200) {
+    return { error: "Location is required and must be 200 characters or fewer." };
+  }
+
+  if (notes.length > 2000) {
+    return { error: "Notes must be 2000 characters or fewer." };
+  }
+
+  if (!Number.isInteger(status) || status < 0 || status > 3) {
+    return { error: "Invalid lesson status." };
+  }
+
+  return { value: { studentId, startUtc, durationMinutes, hourlyRate, location, notes, status } };
+}
+
+app.get("/api/lessons", async (c) => {
+  const result = await c.env.DB
+    .prepare(
+      "SELECT l.Id, l.StudentId, s.FirstName, s.LastName, l.StartUtc, l.DurationMinutes, l.HourlyRate, l.Location, l.Notes, l.Status FROM Lessons l INNER JOIN Students s ON s.Id = l.StudentId ORDER BY l.StartUtc"
+    )
+    .all();
+
+  return c.json(result.results);
+});
+
+app.post("/api/lessons", async (c) => {
+  let payload: LessonPayload;
+
+  try {
+    payload = await c.req.json<LessonPayload>();
+  } catch {
+    return c.json({ error: "Request body must be valid JSON." }, 400);
+  }
+
+  const validation = validateLessonPayload(payload);
+
+  if ("error" in validation) {
+    return c.json({ error: validation.error }, 400);
+  }
+
+  const { studentId, startUtc, durationMinutes, hourlyRate, location, notes, status } = validation.value;
+
+  const student = await c.env.DB
+    .prepare("SELECT Id FROM Students WHERE Id = ? AND Active = 1")
+    .bind(studentId)
+    .first();
+
+  if (!student) {
+    return c.json({ error: "Active student not found." }, 404);
+  }
+
+  const result = await c.env.DB
+    .prepare(
+      "INSERT INTO Lessons (StudentId, StartUtc, DurationMinutes, HourlyRate, Location, Notes, Status) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+    .bind(studentId, startUtc, durationMinutes, hourlyRate, location, notes, status)
+    .run();
+
+  const lessonId = result.meta.last_row_id;
+
+  const created = await c.env.DB
+    .prepare(
+      "SELECT l.Id, l.StudentId, s.FirstName, s.LastName, l.StartUtc, l.DurationMinutes, l.HourlyRate, l.Location, l.Notes, l.Status FROM Lessons l INNER JOIN Students s ON s.Id = l.StudentId WHERE l.Id = ?"
+    )
+    .bind(lessonId)
+    .first();
+
+  return c.json(created, 201);
+});
+
+app.put("/api/lessons/:id/status", async (c) => {
+  const id = Number(c.req.param("id"));
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: "Lesson ID must be a positive integer." }, 400);
+  }
+
+  let payload: { status?: unknown };
+
+  try {
+    payload = await c.req.json<{ status?: unknown }>();
+  } catch {
+    return c.json({ error: "Request body must be valid JSON." }, 400);
+  }
+
+  const status = Number(payload.status);
+
+  if (!Number.isInteger(status) || status < 0 || status > 3) {
+    return c.json({ error: "Invalid lesson status." }, 400);
+  }
+
+  const result = await c.env.DB
+    .prepare("UPDATE Lessons SET Status = ? WHERE Id = ?")
+    .bind(status, id)
+    .run();
+
+  if (result.meta.changes === 0) {
+    return c.json({ error: "Lesson not found." }, 404);
+  }
+
+  return c.json({ success: true });
+});
+
 app.post("/api/students", async (c) => {
   let payload: StudentPayload;
 
