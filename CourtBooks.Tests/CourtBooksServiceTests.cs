@@ -25,6 +25,31 @@ public sealed class CourtBooksServiceTests
     }
 
     [Fact]
+    public void UpdateStudent_ChangesStudentDetails()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "010", "sam@example.com", new DateOnly(2010, 1, 1));
+
+        var updated = service.UpdateStudent(student.Id, "Samuel", "Lee", "011", "samuel@example.com", new DateOnly(2010, 2, 2), "Updated");
+
+        Assert.Equal("Samuel Lee", updated.FullName);
+        Assert.Equal("011", updated.Phone);
+        Assert.Equal("samuel@example.com", updated.Email);
+        Assert.Equal("Updated", updated.Notes);
+    }
+
+    [Fact]
+    public void SetStudentActive_TogglesStudentStatus()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+
+        service.SetStudentActive(student.Id, false);
+
+        Assert.False(student.Active);
+    }
+
+    [Fact]
     public void ScheduleLesson_RejectsUnknownStudent()
     {
         var service = new CourtBooksService(new CourtBooksStore());
