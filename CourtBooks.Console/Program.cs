@@ -4,7 +4,7 @@ using CourtBooks.Core.Models;
 using CourtBooks.Core.Services;
 
 var settings = CourtBooksSettings.Load(Path.Combine(AppContext.BaseDirectory, "appsettings.json"));
-var store = new InMemoryStore();
+var store = new CourtBooksStore();
 store.ConfigureDatabase(settings.DefaultConnection);
 
 if (store.Students.Count == 0)
@@ -136,7 +136,7 @@ static void ScheduleView(CourtBooksService app)
     Pause();
 }
 
-static void Progress(CourtBooksService app, InMemoryStore store)
+static void Progress(CourtBooksService app, CourtBooksStore store)
 {
     Console.Clear();
     StudentsMini(app);
@@ -173,7 +173,7 @@ static void Invoice(CourtBooksService app)
     Pause();
 }
 
-static void Payment(CourtBooksService app, InMemoryStore store)
+static void Payment(CourtBooksService app, CourtBooksStore store)
 {
     Console.Clear();
     app.MarkOverdueInvoices(DateOnly.FromDateTime(DateTime.Today));
@@ -263,14 +263,14 @@ static void Pause(string message = "Press Enter to continue...")
     Console.ReadLine();
 }
 
-static void Seed(InMemoryStore store)
+static void Seed(CourtBooksStore store)
 {
     store.AddStudent(new Student { FirstName = "Alex", LastName = "Naidoo", Phone = "082 555 0101", Email = "alex@example.com", DateOfBirth = new DateOnly(2014, 4, 12) });
     store.AddStudent(new Student { FirstName = "Mia", LastName = "Jacobs", Phone = "082 555 0102", Email = "mia@example.com", DateOfBirth = new DateOnly(2012, 9, 4) });
     SeedCurriculum(store);
 }
 
-static void SeedCurriculum(InMemoryStore store)
+static void SeedCurriculum(CourtBooksStore store)
 {
     if (store.Curriculum.Count > 0) return;
     var names = new[]
