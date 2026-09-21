@@ -6,7 +6,7 @@ Practice management app for solo tennis coaches — student roster, scheduling, 
 - Student roster management with validation and contact details
 - Lesson scheduling with overlap protection, status updates and date-range viewing
 - Curriculum / progress tracking using an ordered hourglass-style skills list
-- Invoicing with payment terms, payment recording, overdue status and outstanding-balance reporting
+- Invoicing with payment terms, payment recording/history, overdue status and outstanding-balance reporting
 - Console dashboard and menu-driven workflow
 - Unit tests covering key business rules
 - GitHub Actions build-and-test workflow
@@ -34,7 +34,7 @@ dotnet run --project CourtBooks.Console
 6. Review outstanding and overdue invoices from the application.
 
 ## Next production steps
-Authentication and role-based access, a web/mobile UI, invoice PDF/email delivery, recurring lesson support, richer payment history, backups, and deployment configuration.
+Authentication and role-based access, a web/mobile UI, invoice PDF/email delivery, recurring lesson support, backups and deployment configuration.
 
 
 ## Database setup
