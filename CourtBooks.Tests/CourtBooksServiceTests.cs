@@ -129,7 +129,7 @@ public sealed class CourtBooksServiceTests
         });
         Assert.Single(one);
 
-        var remaining = 51;
+        var remaining = 52;
         var start = DateTime.Now.AddDays(2);
         var max = service.ScheduleRecurringLessons(student.Id, new RecurringLessonPattern
         {
