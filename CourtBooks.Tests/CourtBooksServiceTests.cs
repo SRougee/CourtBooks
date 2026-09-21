@@ -266,7 +266,7 @@ public sealed class CourtBooksServiceTests
         try
         {
             var first = new CourtBooksStore();
-            first.ConfigureDatabase($"Data Source={path};Foreign Keys=True");
+            first.ConfigureDatabase($"Data Source={path};Foreign Keys=True;Pooling=False");
             var service = new CourtBooksService(first);
             var student = service.AddStudent("Persistent", "Student", "010", "persistent@example.com", new DateOnly(2010, 1, 1));
             var invoice = service.InvoiceStudent(student.Id, 500, DateOnly.FromDateTime(DateTime.Today));
