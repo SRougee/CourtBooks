@@ -1,11 +1,21 @@
+using CourtBooks.Core.Configuration;
 using CourtBooks.Core.Data;
 using CourtBooks.Core.Models;
 using CourtBooks.Core.Services;
 
+var settings = CourtBooksSettings.Load(Path.Combine(AppContext.BaseDirectory, "appsettings.json"));
 var store = new InMemoryStore();
-Seed(store);
+store.ConfigureDatabase(settings.DefaultConnection);
+
+if (store.Students.Count == 0)
+{
+    Seed(store);
+    store.Save();
+}
+
 var app = new CourtBooksService(store);
 app.MarkOverdueInvoices(DateOnly.FromDateTime(DateTime.Today));
+store.Save();
 
 while (true)
 {
@@ -35,9 +45,10 @@ while (true)
             case "5": Progress(app, store); break;
             case "6": Invoice(app); break;
             case "7": Payment(app, store); break;
-            case "0": return;
+            case "0": store.Save(); return;
             default: Pause("Invalid option."); break;
         }
+        store.Save();
     }
     catch (Exception ex)
     {
