@@ -276,7 +276,7 @@ public sealed class CourtBooksServiceTests
             first.Save();
 
             var second = new CourtBooksStore();
-            second.ConfigureDatabase($"Data Source={path};Foreign Keys=True");
+            second.ConfigureDatabase($"Data Source={path};Foreign Keys=True;Pooling=False");
 
             Assert.Equal(PaymentMethod.EFT, second.Payments.Single().Method);
             Assert.Equal("EFT-123", second.Payments.Single().Reference);
@@ -295,7 +295,7 @@ public sealed class CourtBooksServiceTests
         try
         {
             var first = new CourtBooksStore();
-            first.ConfigureDatabase($"Data Source={path};Foreign Keys=True");
+            first.ConfigureDatabase($"Data Source={path};Foreign Keys=True;Pooling=False");
             first.AddStudent(new Student { FirstName = "Persistent", LastName = "Student", Phone = "010", Email = "persistent@example.com", DateOfBirth = new DateOnly(2010, 1, 1) });
             first.Save();
 
