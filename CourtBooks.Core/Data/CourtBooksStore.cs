@@ -158,6 +158,8 @@ public sealed class CourtBooksStore
                     Status = (ProgressStatus)r.GetInt32(2), CompletedOn = r.IsDBNull(3) ? null : DateTime.Parse(r.GetString(3), null, DateTimeStyles.RoundtripKind), Notes = r.GetString(4) });
         }
 
+        var overdueInvoiceIds = new HashSet<int>();
+
         using (var cmd = connection.CreateCommand())
         {
             cmd.CommandText = "SELECT Id,StudentId,InvoiceNumber,IssueDate,DueDate,Amount,Status FROM Invoices ORDER BY Id";
@@ -166,6 +168,8 @@ public sealed class CourtBooksStore
             {
                 var invoice = new Invoice { Id = r.GetInt32(0), StudentId = r.GetInt32(1), InvoiceNumber = r.GetString(2),
                     IssueDate = DateOnly.Parse(r.GetString(3)), DueDate = DateOnly.Parse(r.GetString(4)), Amount = r.GetDecimal(5) };
+                var status = (InvoiceStatus)r.GetInt32(6);
+                if (status == InvoiceStatus.Overdue) overdueInvoiceIds.Add(invoice.Id);
                 Invoices.Add(invoice);
             }
         }
@@ -189,13 +193,10 @@ public sealed class CourtBooksStore
             }
         }
 
-        foreach (var invoice in Invoices)
+        foreach (var invoiceId in overdueInvoiceIds)
         {
-            var storedStatus = invoice.Status;
-            if (storedStatus == InvoiceStatus.Issued || storedStatus == InvoiceStatus.PartiallyPaid)
-                continue;
-            if (storedStatus == InvoiceStatus.Overdue)
-                invoice.MarkOverdue(invoice.DueDate.AddDays(1));
+            var invoice = Invoices.SingleOrDefault(x => x.Id == invoiceId);
+            invoice?.MarkOverdue(invoice.DueDate.AddDays(1));
         }
 
         _studentId = Students.Count == 0 ? 0 : Students.Max(x => x.Id);
