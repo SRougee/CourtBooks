@@ -124,7 +124,24 @@ public sealed class CourtBooksStore
             FOREIGN KEY(StudentId) REFERENCES Students(Id));");
         Execute(connection, null, @"CREATE TABLE IF NOT EXISTS InvoicePayments (
             Id INTEGER PRIMARY KEY AUTOINCREMENT, InvoiceId INTEGER NOT NULL, Amount NUMERIC NOT NULL,
-            PaidOn TEXT NOT NULL, FOREIGN KEY(InvoiceId) REFERENCES Invoices(Id));");
+            PaidOn TEXT NOT NULL, Method INTEGER NOT NULL DEFAULT 4, Reference TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(InvoiceId) REFERENCES Invoices(Id));");
+
+        if (!HasColumn(connection, "InvoicePayments", "Method"))
+            Execute(connection, null, "ALTER TABLE InvoicePayments ADD COLUMN Method INTEGER NOT NULL DEFAULT 4;");
+        if (!HasColumn(connection, "InvoicePayments", "Reference"))
+            Execute(connection, null, "ALTER TABLE InvoicePayments ADD COLUMN Reference TEXT NOT NULL DEFAULT '';");
+    }
+
+    private static bool HasColumn(SqliteConnection connection, string table, string column)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA table_info({table});";
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
     }
 
     private void Load()
