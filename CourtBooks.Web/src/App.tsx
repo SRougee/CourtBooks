@@ -366,7 +366,7 @@ function StudentFormModal({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError("");
