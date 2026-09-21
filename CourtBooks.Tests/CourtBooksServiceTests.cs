@@ -26,6 +26,175 @@ public sealed class CourtBooksServiceTests
     }
 
     [Fact]
+    public void AddStudent_AllowsBoundaryValues()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var exactly100YearsAgo = today.AddYears(-100);
+
+        var todayStudent = service.AddStudent("Today", "Student", "", "", today);
+        var oldStudent = service.AddStudent("Old", "Student", "011", "", exactly100YearsAgo);
+
+        Assert.Equal(today, todayStudent.DateOfBirth);
+        Assert.Equal(exactly100YearsAgo, oldStudent.DateOfBirth);
+    }
+
+    [Fact]
+    public void AddStudent_RejectsDuplicatePhoneIgnoringFormatting()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        service.AddStudent("Sam", "Lee", "082 123 4567", "", new DateOnly(2010, 1, 1));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            service.AddStudent("Other", "Person", "082-123-4567", "", new DateOnly(2011, 1, 1)));
+    }
+
+    [Fact]
+    public void ScheduleLesson_RejectsZeroAndNegativeDuration()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            service.ScheduleLesson(student.Id, DateTime.Now.AddDays(1), 0, 300));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            service.ScheduleLesson(student.Id, DateTime.Now.AddDays(1), -1, 300));
+    }
+
+    [Fact]
+    public void ScheduleLesson_AllowsZeroHourlyRateButRejectsNegativeRate()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var freeStudent = service.AddStudent("Free", "Student", "", "", new DateOnly(2010, 1, 1));
+        var paidStudent = service.AddStudent("Paid", "Student", "011", "", new DateOnly(2010, 1, 1));
+
+        var freeLesson = service.ScheduleLesson(freeStudent.Id, DateTime.Now.AddDays(1), 60, 0);
+        Assert.Equal(0, freeLesson.HourlyRate);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            service.ScheduleLesson(paidStudent.Id, DateTime.Now.AddDays(1), 60, -0.01m));
+    }
+
+    [Fact]
+    public void InvoicePayment_UsesExactBalanceAsPaidBoundary()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+        var invoice = service.InvoiceStudent(student.Id, 1200, DateOnly.FromDateTime(DateTime.Today));
+
+        invoice.RecordPayment(1200);
+
+        Assert.Equal(0, invoice.Balance);
+        Assert.Equal(InvoiceStatus.Paid, invoice.Status);
+    }
+
+    [Fact]
+    public void Invoice_RejectsZeroAndNegativeAmounts()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            service.InvoiceStudent(student.Id, 0, DateOnly.FromDateTime(DateTime.Today)));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            service.InvoiceStudent(student.Id, -0.01m, DateOnly.FromDateTime(DateTime.Today)));
+    }
+
+    [Fact]
+    public void Invoice_AllowsZeroDayTermsButRejectsNegativeTerms()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+
+        var invoice = service.InvoiceStudent(student.Id, 100, DateOnly.FromDateTime(DateTime.Today), 0);
+        Assert.Equal(invoice.IssueDate, invoice.DueDate);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            service.InvoiceStudent(student.Id, 100, DateOnly.FromDateTime(DateTime.Today), -1));
+    }
+
+    [Fact]
+    public void RecurringLessons_RejectsOccurrenceBoundaries()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+
+        var one = service.ScheduleRecurringLessons(student.Id, new RecurringLessonPattern
+        {
+            FirstStart = DateTime.Now.AddDays(1),
+            Occurrences = 1,
+            IntervalDays = 7,
+            DurationMinutes = 60,
+            HourlyRate = 300
+        });
+        Assert.Single(one);
+
+        var remaining = 51;
+        var start = DateTime.Now.AddDays(2);
+        var max = service.ScheduleRecurringLessons(student.Id, new RecurringLessonPattern
+        {
+            FirstStart = start,
+            Occurrences = remaining,
+            IntervalDays = 7,
+            DurationMinutes = 30,
+            HourlyRate = 0
+        });
+        Assert.Equal(remaining, max.Count);
+    }
+
+    [Fact]
+    public void RecurringLessons_RejectsZeroAndOverMaximumOccurrences()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            service.ScheduleRecurringLessons(student.Id, new RecurringLessonPattern
+            {
+                FirstStart = DateTime.Now.AddDays(1),
+                Occurrences = 0
+            }));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            service.ScheduleRecurringLessons(student.Id, new RecurringLessonPattern
+            {
+                FirstStart = DateTime.Now.AddDays(1),
+                Occurrences = 53
+            }));
+    }
+
+    [Fact]
+    public void Sqlite_Parameterization_PreventsInjectionThroughStudentFields()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"courtbooks-injection-{Guid.NewGuid():N}.db");
+        const string malicious = "Robert'); DROP TABLE Students;--";
+        try
+        {
+            var store = new CourtBooksStore();
+            store.ConfigureDatabase($"Data Source={path};Foreign Keys=True;Pooling=False");
+            var service = new CourtBooksService(store);
+
+            var student = service.AddStudent(malicious, "Test", malicious, "safe@example.com", new DateOnly(2010, 1, 1), malicious);
+            var invoice = service.InvoiceStudent(student.Id, 100, DateOnly.FromDateTime(DateTime.Today));
+            service.RecordPayment(invoice.Id, 100, DateTime.Now, PaymentMethod.EFT, malicious);
+            store.Save();
+
+            var reloaded = new CourtBooksStore();
+            reloaded.ConfigureDatabase($"Data Source={path};Foreign Keys=True;Pooling=False");
+
+            Assert.Single(reloaded.Students);
+            Assert.Equal(malicious, reloaded.Students[0].FirstName);
+            Assert.Equal(malicious, reloaded.Students[0].Phone);
+            Assert.Equal(malicious, reloaded.Students[0].Notes);
+            Assert.Equal(malicious, reloaded.Payments[0].Reference);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void UpdateStudent_ChangesStudentDetails()
     {
         var service = new CourtBooksService(new CourtBooksStore());
