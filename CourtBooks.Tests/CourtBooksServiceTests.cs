@@ -170,6 +170,27 @@ public sealed class CourtBooksServiceTests
     }
 
     [Fact]
+    public void ScheduleRecurringLessons_CreatesWeeklyLessons()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+        var first = DateTime.Now.AddDays(1);
+
+        var lessons = service.ScheduleRecurringLessons(student.Id, new RecurringLessonPattern
+        {
+            FirstStart = first,
+            DurationMinutes = 60,
+            HourlyRate = 300,
+            Occurrences = 3,
+            IntervalDays = 7
+        });
+
+        Assert.Equal(3, lessons.Count);
+        Assert.Equal(first.Date, lessons[0].Start.Date);
+        Assert.Equal(first.AddDays(14).Date, lessons[2].Start.Date);
+    }
+
+    [Fact]
     public void InvoicePayment_TracksOutstandingBalance()
     {
         var service = new CourtBooksService(new CourtBooksStore());
