@@ -155,7 +155,7 @@ function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);\n  const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
   async function loadStudents() {
@@ -489,9 +489,21 @@ function SchedulePage() {
     void loadSchedule();
   }, []);
 
+  function openNewLesson() {
+    setEditingLesson(null);
+    setFormOpen(true);
+  }
+
+  function openEditLesson(lesson: Lesson) {
+    setEditingLesson(lesson);
+    setFormOpen(true);
+  }
+
   async function saveLesson(form: LessonForm) {
-    const response = await fetch("/api/lessons", {
-      method: "POST",
+    const isEditing = editingLesson !== null;
+    const url = isEditing ? `/api/lessons/${editingLesson.Id}` : "/api/lessons";
+    const response = await fetch(url, {
+      method: isEditing ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         studentId: Number(form.studentId),
@@ -551,7 +563,7 @@ function SchedulePage() {
           <h1>Schedule</h1>
           <p className="muted">Manage lessons stored in your CourtBooks database.</p>
         </div>
-        <button className="primary-button" onClick={() => setFormOpen(true)}>Schedule lesson</button>
+        <button className="primary-button" onClick={openNewLesson}>Schedule lesson</button>
       </div>
 
       <div className="card schedule-card">
@@ -600,12 +612,12 @@ function SchedulePage() {
                 <div className="lesson-actions">
                   {lesson.Status === 0 && (
                     <>
-                      <button className="secondary-button compact-button" onClick={() => void updateStatus(lesson, 1)}>Complete</button>
+                      <button className="secondary-button compact-button" onClick={() => openEditLesson(lesson)}>Edit</button>\n                      <button className="secondary-button compact-button" onClick={() => void updateStatus(lesson, 1)}>Complete</button>
                       <button className="text-button compact-button" onClick={() => void updateStatus(lesson, 2)}>Cancel</button>
                     </>
                   )}
                   {lesson.Status === 2 && (
-                    <button className="text-button compact-button" onClick={() => void updateStatus(lesson, 0)}>Reschedule</button>
+                    <button className="text-button compact-button" onClick={() => openEditLesson(lesson)}>Reschedule</button>
                   )}
                 </div>
               </article>
@@ -634,13 +646,29 @@ function LessonFormModal({
   onClose: () => void;
   onSave: (form: LessonForm) => Promise<void>;
 }) {
-  const [form, setForm] = useState<LessonForm>({
-    studentId: students[0]?.Id.toString() ?? "",
-    startUtc: "",
-    durationMinutes: "60",
-    hourlyRate: "0",
-    location: "",
-    notes: ""
+  const [form, setForm] = useState<LessonForm>(() => {
+    if (lesson) {
+      const localStart = new Date(lesson.StartUtc);
+      const offset = localStart.getTimezoneOffset();
+      const localValue = new Date(localStart.getTime() - offset * 60 * 1000).toISOString().slice(0, 16);
+      return {
+        studentId: lesson.StudentId.toString(),
+        startUtc: localValue,
+        durationMinutes: lesson.DurationMinutes.toString(),
+        hourlyRate: lesson.HourlyRate.toString(),
+        location: lesson.Location,
+        notes: lesson.Notes
+      };
+    }
+
+    return {
+      studentId: students[0]?.Id.toString() ?? "",
+      startUtc: "",
+      durationMinutes: "60",
+      hourlyRate: "0",
+      location: "",
+      notes: ""
+    };
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -669,7 +697,7 @@ function LessonFormModal({
         <div className="modal-heading">
           <div>
             <p className="eyebrow">Schedule</p>
-            <h2 id="lesson-form-title">Schedule lesson</h2>
+            <h2 id="lesson-form-title">{lesson ? "Edit lesson" : "Schedule lesson"}</h2>
           </div>
           <button className="text-button" onClick={onClose} disabled={saving}>Close</button>
         </div>
@@ -717,7 +745,7 @@ function LessonFormModal({
             <div className="modal-actions">
               <button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Cancel</button>
               <button type="submit" className="primary-button" disabled={saving}>
-                {saving ? "Saving..." : "Schedule lesson"}
+                {saving ? "Saving..." : lesson ? "Save changes" : "Schedule lesson"}
               </button>
             </div>
           </form>
