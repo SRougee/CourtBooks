@@ -314,7 +314,7 @@ static void StudentsMini(CourtBooksService app)
 
 static string Read(string label, string? defaultValue = null)
 {
-    Console.Write($"{label}{(defaultValue is null ? "" : $" [{defaultValue}")}]: ");
+    Console.Write($"{label}{(defaultValue is null ? "" : $" [{defaultValue}]")}: ");
     var value = Console.ReadLine()?.Trim();
     if (string.Equals(value, "m", StringComparison.OrdinalIgnoreCase))
         throw new ReturnToMenuException();
