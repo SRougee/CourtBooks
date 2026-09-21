@@ -154,15 +154,21 @@ app.post("/api/lessons", async (c) => {
 
   const startMs = Date.parse(startUtc);
   const endMs = startMs + durationMinutes * 60 * 1000;
-  const overlapping = await c.env.DB
-    .prepare(
-      "SELECT Id FROM Lessons WHERE Status = 0 AND StartUtc < ? AND datetime(StartUtc, '+' || DurationMinutes || ' minutes') > ? LIMIT 1"
-    )
-    .bind(new Date(endMs).toISOString(), startUtc)
-    .first();
+
+  const scheduledLessons = await c.env.DB
+    .prepare("SELECT Id, StartUtc, DurationMinutes FROM Lessons WHERE Status = 0")
+    .all();
+
+  const overlapping = scheduledLessons.results.some((row) => {
+    const existingStart = Date.parse(String(row.StartUtc));
+    const existingDuration = Number(row.DurationMinutes);
+    const existingEnd = existingStart + existingDuration * 60 * 1000;
+
+    return startMs < existingEnd && endMs > existingStart;
+  });
 
   if (overlapping) {
-    return c.json({ error: "The lesson overlaps an existing lesson." }, 409);
+    return c.json({ error: "The lesson overlaps an existing scheduled lesson." }, 409);
   }
 
   const result = await c.env.DB
