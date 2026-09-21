@@ -259,6 +259,35 @@ public sealed class CourtBooksServiceTests
     }
 
     [Fact]
+    public void SqliteStore_PersistsPaymentDetailsAndCancelledInvoice()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"courtbooks-{Guid.NewGuid():N}.db");
+        try
+        {
+            var first = new CourtBooksStore();
+            first.ConfigureDatabase($"Data Source={path};Foreign Keys=True");
+            var service = new CourtBooksService(first);
+            var student = service.AddStudent("Persistent", "Student", "010", "persistent@example.com", new DateOnly(2010, 1, 1));
+            var invoice = service.InvoiceStudent(student.Id, 500, DateOnly.FromDateTime(DateTime.Today));
+            service.RecordPayment(invoice.Id, 200, DateTime.Now, PaymentMethod.EFT, "EFT-123");
+            var cancelled = service.InvoiceStudent(student.Id, 300, DateOnly.FromDateTime(DateTime.Today));
+            service.CancelInvoice(cancelled.Id);
+            first.Save();
+
+            var second = new CourtBooksStore();
+            second.ConfigureDatabase($"Data Source={path};Foreign Keys=True");
+
+            Assert.Equal(PaymentMethod.EFT, second.Payments.Single().Method);
+            Assert.Equal("EFT-123", second.Payments.Single().Reference);
+            Assert.Equal(InvoiceStatus.Cancelled, second.Invoices.Single(x => x.Id == cancelled.Id).Status);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void SqliteStore_PersistsStudentsAcrossStoreInstances()
     {
         var path = Path.Combine(Path.GetTempPath(), $"courtbooks-{Guid.NewGuid():N}.db");
