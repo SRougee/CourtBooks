@@ -1,8 +1,20 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "courtbooks-web",
   "compatibility_date": "2026-09-21",
+  "main": "./worker/index.ts",
   "assets": {
-    "directory": "./dist"
-  }
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "courtbooks-db",
+      "database_id": "933f7419-83f5-48ba-be21-6e66e4be5c6a",
+      "remote": true
+    }
+  ]
 }
