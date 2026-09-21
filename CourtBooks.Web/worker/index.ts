@@ -259,11 +259,13 @@ app.put("/api/lessons/:id", async (c) => {
     return c.json({ error: "The lesson overlaps an existing scheduled lesson." }, 409);
   }
 
+  const newStatus = existing.Status === 2 ? 0 : existing.Status;
+
   await c.env.DB
     .prepare(
-      "UPDATE Lessons SET StudentId = ?, StartUtc = ?, DurationMinutes = ?, HourlyRate = ?, Location = ?, Notes = ? WHERE Id = ?"
+      "UPDATE Lessons SET StudentId = ?, StartUtc = ?, DurationMinutes = ?, HourlyRate = ?, Location = ?, Notes = ?, Status = ? WHERE Id = ?"
     )
-    .bind(studentId, startUtc, durationMinutes, hourlyRate, location, notes, id)
+    .bind(studentId, startUtc, durationMinutes, hourlyRate, location, notes, newStatus, id)
     .run();
 
   const updated = await c.env.DB
