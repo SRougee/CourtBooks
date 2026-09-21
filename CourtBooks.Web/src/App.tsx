@@ -155,7 +155,7 @@ function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [formOpen, setFormOpen] = useState(false);\n  const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
   async function loadStudents() {
@@ -454,6 +454,7 @@ function SchedulePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [formOpen, setFormOpen] = useState(false);
+  const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
 
   async function loadSchedule() {
     setLoading(true);
