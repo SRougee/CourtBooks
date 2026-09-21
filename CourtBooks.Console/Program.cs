@@ -19,24 +19,26 @@ store.Save();
 
 while (true)
 {
-    Console.Clear();
-    Console.WriteLine("=================================");
-    Console.WriteLine("           COURTBOOKS");
-    Console.WriteLine(" Tennis Coach Practice Management");
-    Console.WriteLine("=================================");
-    Console.WriteLine("1. Dashboard");
-    Console.WriteLine("2. Students");
-    Console.WriteLine("3. Schedule lesson");
-    Console.WriteLine("4. View / update schedule");
-    Console.WriteLine("5. Curriculum progress");
-    Console.WriteLine("6. Create invoice");
-    Console.WriteLine("7. Record payment");
-    Console.WriteLine("0. Exit");
-    Console.Write("\nChoose: ");
-
     try
     {
-        switch (Console.ReadLine())
+        Console.Clear();
+        Console.WriteLine("=================================");
+        Console.WriteLine("           COURTBOOKS");
+        Console.WriteLine(" Tennis Coach Practice Management");
+        Console.WriteLine("=================================");
+        Console.WriteLine("1. Dashboard");
+        Console.WriteLine("2. Students");
+        Console.WriteLine("3. Schedule lesson");
+        Console.WriteLine("4. View / update schedule");
+        Console.WriteLine("5. Curriculum progress");
+        Console.WriteLine("6. Create invoice");
+        Console.WriteLine("7. Record payment");
+        Console.WriteLine("8. Reports");
+        Console.WriteLine("0. Exit");
+        Console.WriteLine("\nTip: type M at any input prompt to return here.");
+        Console.Write("\nChoose: ");
+
+        switch (Console.ReadLine()?.Trim().ToLowerInvariant())
         {
             case "1": Dashboard(app); break;
             case "2": Students(app); break;
@@ -45,9 +47,15 @@ while (true)
             case "5": Progress(app, store); break;
             case "6": Invoice(app); break;
             case "7": Payment(app, store); break;
+            case "8": Reports(app, store); break;
             case "0": store.Save(); return;
             default: Pause("Invalid option."); break;
         }
+
+        store.Save();
+    }
+    catch (ReturnToMenuException)
+    {
         store.Save();
     }
     catch (Exception ex)
@@ -61,24 +69,53 @@ static void Dashboard(CourtBooksService app)
     Console.Clear();
     var today = DateTime.Today;
     Console.WriteLine("DASHBOARD");
-    Console.WriteLine($"Students:          {app.Students.Count(s => s.Active)}");
+    Console.WriteLine("---------");
+    Console.WriteLine($"Active students:   {app.Students.Count(s => s.Active)}");
     Console.WriteLine($"Today's lessons:   {app.GetLessons(today, today.AddDays(1)).Count()}");
     Console.WriteLine($"Next 7 days:       {app.GetLessons(DateTime.Now, DateTime.Now.AddDays(7)).Count()}");
     Console.WriteLine($"Outstanding:       {app.GetOutstandingBalance():C2}");
-    Console.WriteLine($"Invoices:           {app.Invoices.Count}");
+    Console.WriteLine($"Invoices:          {app.Invoices.Count}");
     Pause();
 }
 
 static void Students(CourtBooksService app)
 {
-    Console.Clear();
-    Console.WriteLine("STUDENTS");
-    foreach (var s in app.Students)
-        Console.WriteLine($"{s.Id,2} | {s.FullName,-24} | {s.Phone,-14} | {s.Email,-28} | {(s.Active ? "Active" : "Inactive")}");
+    while (true)
+    {
+        Console.Clear();
+        Console.WriteLine("STUDENTS");
+        Console.WriteLine("--------");
+        foreach (var s in app.Students.OrderBy(x => x.Id))
+            Console.WriteLine($"{s.Id,2} | {s.FullName,-24} | {s.Phone,-14} | {s.Email,-28} | {(s.Active ? "Active" : "Inactive")}");
 
-    Console.Write("\nAdd student? (y/n): ");
-    if (Console.ReadLine()?.Trim().ToLowerInvariant() != "y") { Pause(); return; }
+        Console.WriteLine("\nA. Add student");
+        Console.WriteLine("E. Edit student");
+        Console.WriteLine("T. Activate / deactivate student");
+        Console.WriteLine("M. Main menu");
+        Console.Write("\nChoose: ");
 
+        switch (Console.ReadLine()?.Trim().ToLowerInvariant())
+        {
+            case "a":
+                AddStudent(app);
+                break;
+            case "e":
+                EditStudent(app);
+                break;
+            case "t":
+                ToggleStudent(app);
+                break;
+            case "m":
+                return;
+            default:
+                Pause("Invalid option.");
+                break;
+        }
+    }
+}
+
+static void AddStudent(CourtBooksService app)
+{
     var student = app.AddStudent(
         ReadRequired("First name"),
         ReadRequired("Last name"),
@@ -91,9 +128,38 @@ static void Students(CourtBooksService app)
     Pause();
 }
 
+static void EditStudent(CourtBooksService app)
+{
+    var id = ReadInt("Student ID");
+    var student = app.Students.SingleOrDefault(x => x.Id == id) ?? throw new KeyNotFoundException("Student not found.");
+
+    var updated = app.UpdateStudent(
+        id,
+        Read("First name", student.FirstName),
+        Read("Last name", student.LastName),
+        Read("Phone", student.Phone),
+        Read("Email", student.Email),
+        ReadDate("Date of birth (yyyy-mm-dd)", student.DateOfBirth),
+        Read("Notes", student.Notes));
+
+    Console.WriteLine($"Updated student #{updated.Id}: {updated.FullName}");
+    Pause();
+}
+
+static void ToggleStudent(CourtBooksService app)
+{
+    var id = ReadInt("Student ID");
+    var student = app.Students.SingleOrDefault(x => x.Id == id) ?? throw new KeyNotFoundException("Student not found.");
+    app.SetStudentActive(id, !student.Active);
+    Console.WriteLine($"{student.FullName} is now {(student.Active ? "active" : "inactive")}.");
+    Pause();
+}
+
 static void Schedule(CourtBooksService app)
 {
     Console.Clear();
+    Console.WriteLine("SCHEDULE LESSON");
+    Console.WriteLine("----------------");
     StudentsMini(app);
     var id = ReadInt("Student ID");
     var start = ReadDateTime("Start (yyyy-MM-dd HH:mm)");
@@ -113,6 +179,7 @@ static void ScheduleView(CourtBooksService app)
     var lessons = app.GetLessons(from.ToDateTime(TimeOnly.MinValue), to.AddDays(1).ToDateTime(TimeOnly.MinValue)).ToList();
 
     Console.WriteLine("SCHEDULE");
+    Console.WriteLine("--------");
     if (lessons.Count == 0) Console.WriteLine("No lessons found.");
     foreach (var l in lessons)
     {
@@ -139,6 +206,8 @@ static void ScheduleView(CourtBooksService app)
 static void Progress(CourtBooksService app, CourtBooksStore store)
 {
     Console.Clear();
+    Console.WriteLine("CURRICULUM PROGRESS");
+    Console.WriteLine("-------------------");
     StudentsMini(app);
     var studentId = ReadInt("Student ID");
     if (!store.Students.Any(x => x.Id == studentId)) throw new ArgumentException("Student does not exist.");
@@ -164,6 +233,8 @@ static void Progress(CourtBooksService app, CourtBooksStore store)
 static void Invoice(CourtBooksService app)
 {
     Console.Clear();
+    Console.WriteLine("CREATE INVOICE");
+    Console.WriteLine("--------------");
     StudentsMini(app);
     var studentId = ReadInt("Student ID");
     var amount = ReadDecimal("Invoice amount");
@@ -176,7 +247,10 @@ static void Invoice(CourtBooksService app)
 static void Payment(CourtBooksService app, CourtBooksStore store)
 {
     Console.Clear();
+    Console.WriteLine("RECORD PAYMENT");
+    Console.WriteLine("--------------");
     app.MarkOverdueInvoices(DateOnly.FromDateTime(DateTime.Today));
+
     foreach (var i in app.Invoices)
     {
         var student = app.Students.First(s => s.Id == i.StudentId);
@@ -194,6 +268,44 @@ static void Payment(CourtBooksService app, CourtBooksStore store)
     Pause();
 }
 
+static void Reports(CourtBooksService app, CourtBooksStore store)
+{
+    Console.Clear();
+    Console.WriteLine("REPORTS");
+    Console.WriteLine("-------");
+
+    var today = DateTime.Today;
+    var upcoming = app.GetLessons(today, today.AddDays(7)).ToList();
+    var completedLessons = app.Lessons.Count(x => x.Status == LessonStatus.Completed);
+    var scheduledLessons = app.Lessons.Count(x => x.Status == LessonStatus.Scheduled);
+    var revenue = app.Invoices.Sum(x => x.AmountPaid);
+    var invoiced = app.Invoices.Sum(x => x.Amount);
+    var outstanding = app.GetOutstandingBalance();
+
+    Console.WriteLine($"Active students:       {app.Students.Count(x => x.Active)}");
+    Console.WriteLine($"Inactive students:     {app.Students.Count(x => !x.Active)}");
+    Console.WriteLine($"Scheduled lessons:     {scheduledLessons}");
+    Console.WriteLine($"Completed lessons:     {completedLessons}");
+    Console.WriteLine($"Upcoming 7-day lessons:{upcoming.Count}");
+    Console.WriteLine($"Total invoiced:         {invoiced:C2}");
+    Console.WriteLine($"Payments received:     {revenue:C2}");
+    Console.WriteLine($"Outstanding balance:   {outstanding:C2}");
+    Console.WriteLine($"Overdue invoices:      {app.Invoices.Count(x => x.Status == InvoiceStatus.Overdue)}");
+
+    Console.WriteLine("\nSTUDENT PROGRESS");
+    foreach (var student in app.Students.OrderBy(x => x.LastName))
+        Console.WriteLine($"{student.FullName,-28} {app.GetProgressPercent(student.Id),3}%");
+
+    Console.WriteLine("\nUPCOMING LESSONS");
+    foreach (var lesson in upcoming)
+    {
+        var student = app.Students.First(x => x.Id == lesson.StudentId);
+        Console.WriteLine($"{lesson.Start:ddd dd MMM HH:mm} | {student.FullName,-24} | {lesson.Status}");
+    }
+
+    Pause();
+}
+
 static void StudentsMini(CourtBooksService app)
 {
     foreach (var s in app.Students.Where(x => x.Active))
@@ -202,8 +314,10 @@ static void StudentsMini(CourtBooksService app)
 
 static string Read(string label, string? defaultValue = null)
 {
-    Console.Write($"{label}{(defaultValue is null ? "" : $" [{defaultValue}]")}: ");
+    Console.Write($"{label}{(defaultValue is null ? "" : $" [{defaultValue}")}]: ");
     var value = Console.ReadLine()?.Trim();
+    if (string.Equals(value, "m", StringComparison.OrdinalIgnoreCase))
+        throw new ReturnToMenuException();
     return string.IsNullOrWhiteSpace(value) ? defaultValue ?? "" : value;
 }
 
@@ -286,4 +400,8 @@ static void SeedCurriculum(CourtBooksStore store)
     var id = 0;
     foreach (var (name, category) in names)
         store.Curriculum.Add(new CurriculumStep { Id = ++id, Name = name, Category = category, Order = id });
+}
+
+sealed class ReturnToMenuException : Exception
+{
 }
