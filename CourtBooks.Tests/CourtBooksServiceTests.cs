@@ -95,4 +95,27 @@ public sealed class CourtBooksServiceTests
 
         Assert.Equal(InvoiceStatus.Overdue, invoice.Status);
     }
+
+    [Fact]
+    public void SqliteStore_PersistsStudentsAcrossStoreInstances()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"courtbooks-{Guid.NewGuid():N}.db");
+        try
+        {
+            var first = new InMemoryStore();
+            first.ConfigureDatabase($"Data Source={path};Foreign Keys=True");
+            first.AddStudent(new Student { FirstName = "Persistent", LastName = "Student", Phone = "010", Email = "persistent@example.com", DateOfBirth = new DateOnly(2010, 1, 1) });
+            first.Save();
+
+            var second = new InMemoryStore();
+            second.ConfigureDatabase($"Data Source={path};Foreign Keys=True");
+
+            Assert.Single(second.Students);
+            Assert.Equal("Persistent Student", second.Students[0].FullName);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
 }
