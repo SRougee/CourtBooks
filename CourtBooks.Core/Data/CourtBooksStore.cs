@@ -92,7 +92,7 @@ public sealed class CourtBooksStore
         foreach (var payment in Payments)
             Execute(connection, transaction,
                 "INSERT INTO InvoicePayments (Id, InvoiceId, Amount, PaidOn) VALUES ($id,$invoice,$amount,$paid);",
-                ("$id", payment.Id), ("$invoice", payment.InvoiceId), ("$amount", payment.Amount), ("$paid", payment.PaidOn.ToString("O")));
+                ("$id", payment.Id), ("$invoice", payment.InvoiceId), ("$amount", payment.Amount), ("$paid", payment.PaidOn.ToString("O")), ("$method", (int)payment.Method), ("$reference", payment.Reference)));
 
         transaction.Commit();
     }
@@ -192,7 +192,7 @@ public sealed class CourtBooksStore
 
         using (var cmd = connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT Id,InvoiceId,Amount,PaidOn FROM InvoicePayments ORDER BY Id";
+            cmd.CommandText = "SELECT Id,InvoiceId,Amount,PaidOn,Method,Reference FROM InvoicePayments ORDER BY Id";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -201,7 +201,9 @@ public sealed class CourtBooksStore
                     Id = r.GetInt32(0),
                     InvoiceId = r.GetInt32(1),
                     Amount = Convert.ToDecimal(r.GetValue(2), CultureInfo.InvariantCulture),
-                    PaidOn = DateTime.Parse(r.GetString(3), null, DateTimeStyles.RoundtripKind)
+                    PaidOn = DateTime.Parse(r.GetString(3), null, DateTimeStyles.RoundtripKind),
+                    Method = (PaymentMethod)r.GetInt32(4),
+                    Reference = r.GetString(5)
                 };
                 Payments.Add(payment);
                 var invoice = Invoices.SingleOrDefault(x => x.Id == payment.InvoiceId);
