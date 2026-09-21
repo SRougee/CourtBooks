@@ -265,7 +265,12 @@ static void Payment(CourtBooksService app, CourtBooksStore store)
     var invoice = store.Invoices.SingleOrDefault(x => x.InvoiceNumber.Equals(number, StringComparison.OrdinalIgnoreCase));
     if (invoice is null) { Pause("Invoice not found."); return; }
 
-    var payment = app.RecordPayment(invoice.Id, ReadDecimal("Payment amount"));
+    var paymentAmount = ReadDecimal("Payment amount");
+    Console.WriteLine("1=Cash 2=EFT 3=Card 4=Debit order 5=Other");
+    var methodChoice = ReadInt("Payment method", 5);
+    if (methodChoice is < 1 or > 5) throw new ArgumentOutOfRangeException("method");
+    var reference = Read("Payment reference");
+    var payment = app.RecordPayment(invoice.Id, paymentAmount, DateTime.Now, (PaymentMethod)(methodChoice - 1), reference);
     Console.WriteLine($"Payment recorded on {payment.PaidOn:g}. Balance: {invoice.Balance:C2}. Status: {invoice.Status}");
     Pause();
 }
