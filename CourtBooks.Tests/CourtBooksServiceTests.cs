@@ -429,6 +429,176 @@ public sealed class CourtBooksServiceTests
     }
 
     [Fact]
+    public void UpdateLessonStatus_AllowsCompletionCancellationAndNoShow()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Status", "Student", "", "", new DateOnly(2010, 1, 1));
+        var completed = service.ScheduleLesson(student.Id, DateTime.Now.AddDays(1), 60, 300);
+        service.UpdateLessonStatus(completed.Id, LessonStatus.Completed);
+        Assert.Equal(LessonStatus.Completed, completed.Status);
+
+        var cancelled = service.ScheduleLesson(student.Id, DateTime.Now.AddDays(2), 60, 300);
+        service.UpdateLessonStatus(cancelled.Id, LessonStatus.Cancelled);
+        Assert.Equal(LessonStatus.Cancelled, cancelled.Status);
+
+        var noShow = service.ScheduleLesson(student.Id, DateTime.Now.AddDays(3), 60, 300);
+        service.UpdateLessonStatus(noShow.Id, LessonStatus.NoShow);
+        Assert.Equal(LessonStatus.NoShow, noShow.Status);
+    }
+
+    [Fact]
+    public void UpdateLessonStatus_RejectsUnknownAndReopeningCompletedLesson()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        Assert.Throws<KeyNotFoundException>(() => service.UpdateLessonStatus(999, LessonStatus.Completed));
+
+        var student = service.AddStudent("Status", "Student", "", "", new DateOnly(2010, 1, 1));
+        var lesson = service.ScheduleLesson(student.Id, DateTime.Now.AddDays(1), 60, 300);
+        service.UpdateLessonStatus(lesson.Id, LessonStatus.Completed);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            service.UpdateLessonStatus(lesson.Id, LessonStatus.Scheduled));
+    }
+
+    [Fact]
+    public void GetLessons_FiltersAndOrdersLessonsByRange()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Range", "Student", "", "", new DateOnly(2010, 1, 1));
+        var first = DateTime.Now.AddDays(1).Date.AddHours(10);
+        service.ScheduleLesson(student.Id, first.AddHours(2), 60, 300);
+        service.ScheduleLesson(student.Id, first, 60, 300);
+        service.ScheduleLesson(student.Id, first.AddDays(1), 60, 300);
+
+        var lessons = service.GetLessons(first, first.AddDays(1)).ToList();
+
+        Assert.Equal(2, lessons.Count);
+        Assert.Equal(first, lessons[0].Start);
+        Assert.Equal(first.AddHours(2), lessons[1].Start);
+    }
+
+    [Fact]
+    public void GetLessons_RejectsInvalidRange()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var start = DateTime.Now.AddDays(1);
+        Assert.Throws<ArgumentException>(() => service.GetLessons(start, start));
+        Assert.Throws<ArgumentException>(() => service.GetLessons(start, start.AddMinutes(-1)));
+    }
+
+    [Fact]
+    public void GetOutstandingBalance_ExcludesCancelledAndCanFilterStudent()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var first = service.AddStudent("First", "Student", "", "", new DateOnly(2010, 1, 1));
+        var second = service.AddStudent("Second", "Student", "011", "", new DateOnly(2010, 1, 1));
+        service.InvoiceStudent(first.Id, 500, DateOnly.FromDateTime(DateTime.Today));
+        var cancelled = service.InvoiceStudent(first.Id, 200, DateOnly.FromDateTime(DateTime.Today));
+        service.CancelInvoice(cancelled.Id);
+        service.InvoiceStudent(second.Id, 300, DateOnly.FromDateTime(DateTime.Today));
+
+        Assert.Equal(500, service.GetOutstandingBalance(first.Id));
+        Assert.Equal(800, service.GetOutstandingBalance());
+    }
+
+    [Fact]
+    public void GetProgressPercent_ReturnsZeroWhenCurriculumIsEmpty()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Progress", "Student", "", "", new DateOnly(2010, 1, 1));
+
+        Assert.Equal(0, service.GetProgressPercent(student.Id));
+    }
+
+    [Fact]
+    public void SetProgress_UpdatesExistingProgressAndRejectsUnknownIds()
+    {
+        var store = new CourtBooksStore();
+        var service = new CourtBooksService(store);
+        var student = service.AddStudent("Progress", "Student", "", "", new DateOnly(2010, 1, 1));
+        store.Curriculum.Add(new CurriculumStep { Id = 1, Name = "Serve", Category = "Serve", Order = 1 });
+
+        var progress = service.SetProgress(student.Id, 1, ProgressStatus.InProgress, "Work on toss");
+        var updated = service.SetProgress(student.Id, 1, ProgressStatus.Completed, "Ready");
+
+        Assert.Same(progress, updated);
+        Assert.Equal(ProgressStatus.Completed, updated.Status);
+        Assert.Equal("Ready", updated.Notes);
+        Assert.NotNull(updated.CompletedOn);
+
+        Assert.Throws<ArgumentException>(() => service.SetProgress(999, 1, ProgressStatus.Completed));
+        Assert.Throws<ArgumentException>(() => service.SetProgress(student.Id, 999, ProgressStatus.Completed));
+    }
+
+    [Fact]
+    public void RecordPayment_RejectsUnknownInvoiceAndPreIssueDate()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        Assert.Throws<KeyNotFoundException>(() => service.RecordPayment(999, 100));
+
+        var student = service.AddStudent("Payment", "Student", "", "", new DateOnly(2010, 1, 1));
+        var issueDate = DateOnly.FromDateTime(DateTime.Today);
+        var invoice = service.InvoiceStudent(student.Id, 500, issueDate);
+
+        Assert.Throws<ArgumentException>(() =>
+            service.RecordPayment(invoice.Id, 100, DateTime.Now.AddDays(-2)));
+    }
+
+    [Fact]
+    public void RescheduleLesson_RejectsInvalidStateDurationAndConflict()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Schedule", "Student", "", "", new DateOnly(2010, 1, 1));
+        var first = service.ScheduleLesson(student.Id, DateTime.Now.AddDays(1), 60, 300);
+        var second = service.ScheduleLesson(student.Id, DateTime.Now.AddDays(2), 60, 300);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            service.RescheduleLesson(first.Id, DateTime.Now.AddDays(3), 0));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            service.RescheduleLesson(first.Id, second.Start, 60));
+
+        service.UpdateLessonStatus(second.Id, LessonStatus.Completed);
+        Assert.Throws<InvalidOperationException>(() =>
+            service.RescheduleLesson(second.Id, DateTime.Now.AddDays(4)));
+
+        Assert.Throws<KeyNotFoundException>(() =>
+            service.RescheduleLesson(999, DateTime.Now.AddDays(4)));
+    }
+
+    [Fact]
+    public void RescheduleLesson_UsesExistingDurationAndOptionalLocation()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Schedule", "Student", "", "", new DateOnly(2010, 1, 1));
+        var lesson = service.ScheduleLesson(student.Id, DateTime.Now.AddDays(1), 75, 300, "Court A");
+
+        var updated = service.RescheduleLesson(lesson.Id, DateTime.Now.AddDays(2));
+
+        Assert.Equal(75, updated.DurationMinutes);
+        Assert.Equal("Court A", updated.Location);
+
+        service.RescheduleLesson(lesson.Id, DateTime.Now.AddDays(3), 90, "Court B");
+        Assert.Equal(90, lesson.DurationMinutes);
+        Assert.Equal("Court B", lesson.Location);
+    }
+
+    [Fact]
+    public void RecurringLessons_RejectsInvalidIntervalDurationRateAndConflict()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Recurring", "Student", "", "", new DateOnly(2010, 1, 1));
+        var start = DateTime.Now.AddDays(1);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => service.ScheduleRecurringLessons(student.Id, new RecurringLessonPattern { FirstStart = start, Occurrences = 2, IntervalDays = 0 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => service.ScheduleRecurringLessons(student.Id, new RecurringLessonPattern { FirstStart = start, Occurrences = 2, DurationMinutes = 0 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => service.ScheduleRecurringLessons(student.Id, new RecurringLessonPattern { FirstStart = start, Occurrences = 2, HourlyRate = -1 }));
+
+        service.ScheduleLesson(student.Id, start, 60, 300);
+        Assert.Throws<InvalidOperationException>(() => service.ScheduleRecurringLessons(student.Id, new RecurringLessonPattern { FirstStart = start, Occurrences = 1 }));
+    }
+
+    [Fact]
     public void SqliteStore_PersistsPaymentDetailsAndCancelledInvoice()
     {
         var path = Path.Combine(Path.GetTempPath(), $"courtbooks-{Guid.NewGuid():N}.db");
