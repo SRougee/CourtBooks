@@ -37,3 +37,17 @@ The MVP uses an in-memory store, so restarting the console resets the sample dat
 
 ## Next production steps
 Persistent database storage, authentication and role-based access, a web/mobile UI, invoice PDF/email delivery, recurring lesson support, reporting, backups, and deployment configuration.
+
+
+## Database setup
+CourtBooks now uses SQLite for local persistence. The connection string is stored in `appsettings.json` and defaults to `Data Source=courtbooks.db;Foreign Keys=True`.
+
+On first run the application:
+1. Creates the SQLite schema automatically.
+2. Seeds the seven curriculum steps and two sample students if the database is empty.
+3. Loads existing students, lessons, progress and invoices on later runs.
+4. Saves changes back to SQLite after each menu operation.
+
+The generated `courtbooks.db` file is deliberately ignored by Git. The repository contains the reproducible schema and seed script at `Database/setup.sql` instead.
+
+For a fresh manual database, open `Database/setup.sql` with SQLite. For normal use, simply run the console application and it will create the database automatically.
