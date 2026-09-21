@@ -263,8 +263,8 @@ static void Payment(CourtBooksService app, CourtBooksStore store)
     var invoice = store.Invoices.SingleOrDefault(x => x.InvoiceNumber.Equals(number, StringComparison.OrdinalIgnoreCase));
     if (invoice is null) { Pause("Invoice not found."); return; }
 
-    invoice.RecordPayment(ReadDecimal("Payment amount"));
-    Console.WriteLine($"Payment recorded. Balance: {invoice.Balance:C2}. Status: {invoice.Status}");
+    var payment = app.RecordPayment(invoice.Id, ReadDecimal("Payment amount"));
+    Console.WriteLine($"Payment recorded on {payment.PaidOn:g}. Balance: {invoice.Balance:C2}. Status: {invoice.Status}");
     Pause();
 }
 
@@ -291,6 +291,7 @@ static void Reports(CourtBooksService app, CourtBooksStore store)
     Console.WriteLine($"Payments received:     {revenue:C2}");
     Console.WriteLine($"Outstanding balance:   {outstanding:C2}");
     Console.WriteLine($"Overdue invoices:      {app.Invoices.Count(x => x.Status == InvoiceStatus.Overdue)}");
+    Console.WriteLine($"Payment transactions:  {store.Payments.Count}");
 
     Console.WriteLine("\nSTUDENT PROGRESS");
     foreach (var student in app.Students.OrderBy(x => x.LastName))
