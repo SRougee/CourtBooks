@@ -26,6 +26,8 @@ public sealed class CourtBooksService
 
     public IReadOnlyList<Lesson> ScheduleRecurringLessons(int studentId, RecurringLessonPattern pattern)
     {
+        var student = _store.Students.SingleOrDefault(x => x.Id == studentId) ?? throw new ArgumentException("Student does not exist.");
+        if (!student.Active) throw new InvalidOperationException("Inactive students cannot be scheduled for new lessons.");
         if (pattern.Occurrences is < 1 or > 52) throw new ArgumentOutOfRangeException(nameof(pattern.Occurrences), "Occurrences must be between 1 and 52.");
         if (pattern.IntervalDays <= 0) throw new ArgumentOutOfRangeException(nameof(pattern.IntervalDays));
         if (pattern.DurationMinutes <= 0) throw new ArgumentOutOfRangeException(nameof(pattern.DurationMinutes));
