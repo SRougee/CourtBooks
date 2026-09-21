@@ -189,8 +189,10 @@ static void ScheduleView(CourtBooksService app)
 
     if (lessons.Count > 0)
     {
-        Console.Write("\nUpdate lesson status? (y/n): ");
-        if (Console.ReadLine()?.Trim().ToLowerInvariant() == "y")
+        Console.Write("\nUpdate lesson status? (y/n, M=main menu): ");
+        var updateChoice = Console.ReadLine()?.Trim().ToLowerInvariant();
+        if (updateChoice == "m") throw new ReturnToMenuException();
+        if (updateChoice == "y")
         {
             var lessonId = ReadInt("Lesson ID");
             Console.WriteLine("1=Scheduled 2=Completed 3=Cancelled 4=NoShow");
