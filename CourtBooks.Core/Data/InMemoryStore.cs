@@ -1,3 +1,5 @@
+using System.Globalization;
+using Microsoft.Data.Sqlite;
 using CourtBooks.Core.Models;
 
 namespace CourtBooks.Core.Data;
@@ -7,6 +9,7 @@ public sealed class InMemoryStore
     private int _studentId;
     private int _lessonId;
     private int _invoiceId;
+    private string? _connectionString;
 
     public List<Student> Students { get; } = [];
     public List<Lesson> Lessons { get; } = [];
@@ -14,19 +17,188 @@ public sealed class InMemoryStore
     public List<StudentProgress> Progress { get; } = [];
     public List<Invoice> Invoices { get; } = [];
 
+    public void ConfigureDatabase(string connectionString)
+    {
+        _connectionString = connectionString;
+        EnsureSchema();
+        Load();
+    }
+
+    public void Save()
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        using var transaction = connection.BeginTransaction();
+
+        Execute(connection, transaction, "DELETE FROM StudentProgress;");
+        Execute(connection, transaction, "DELETE FROM Lessons;");
+        Execute(connection, transaction, "DELETE FROM InvoicePayments;");
+        Execute(connection, transaction, "DELETE FROM Invoices;");
+        Execute(connection, transaction, "DELETE FROM Curriculum;");
+        Execute(connection, transaction, "DELETE FROM Students;");
+
+        foreach (var s in Students)
+            Execute(connection, transaction,
+                "INSERT INTO Students (Id, FirstName, LastName, Phone, Email, DateOfBirth, Notes, Active) VALUES ($id,$first,$last,$phone,$email,$dob,$notes,$active);",
+                ("$id", s.Id), ("$first", s.FirstName), ("$last", s.LastName), ("$phone", s.Phone),
+                ("$email", s.Email), ("$dob", s.DateOfBirth.ToString("yyyy-MM-dd")), ("$notes", s.Notes), ("$active", s.Active ? 1 : 0));
+
+        foreach (var c in Curriculum)
+            Execute(connection, transaction,
+                "INSERT INTO Curriculum (Id, Name, Category, SortOrder) VALUES ($id,$name,$category,$sort);",
+                ("$id", c.Id), ("$name", c.Name), ("$category", c.Category), ("$sort", c.Order));
+
+        foreach (var l in Lessons)
+            Execute(connection, transaction,
+                "INSERT INTO Lessons (Id, StudentId, StartUtc, DurationMinutes, HourlyRate, Location, Notes, Status) VALUES ($id,$student,$start,$duration,$rate,$location,$notes,$status);",
+                ("$id", l.Id), ("$student", l.StudentId), ("$start", l.Start.ToString("O")), ("$duration", l.DurationMinutes),
+                ("$rate", l.HourlyRate), ("$location", l.Location), ("$notes", l.Notes), ("$status", (int)l.Status));
+
+        foreach (var p in Progress)
+            Execute(connection, transaction,
+                "INSERT INTO StudentProgress (StudentId, CurriculumStepId, Status, CompletedOn, Notes) VALUES ($student,$step,$status,$completed,$notes);",
+                ("$student", p.StudentId), ("$step", p.CurriculumStepId), ("$status", (int)p.Status),
+                ("$completed", p.CompletedOn?.ToString("O")), ("$notes", p.Notes));
+
+        foreach (var i in Invoices)
+        {
+            Execute(connection, transaction,
+                "INSERT INTO Invoices (Id, StudentId, InvoiceNumber, IssueDate, DueDate, Amount, Status) VALUES ($id,$student,$number,$issue,$due,$amount,$status);",
+                ("$id", i.Id), ("$student", i.StudentId), ("$number", i.InvoiceNumber),
+                ("$issue", i.IssueDate.ToString("yyyy-MM-dd")), ("$due", i.DueDate.ToString("yyyy-MM-dd")),
+                ("$amount", i.Amount), ("$status", (int)i.Status));
+
+            if (i.AmountPaid > 0)
+                Execute(connection, transaction,
+                    "INSERT INTO InvoicePayments (InvoiceId, Amount, PaidOn) VALUES ($invoice,$amount,$paid);",
+                    ("$invoice", i.Id), ("$amount", i.AmountPaid), ("$paid", DateTime.Now.ToString("O")));
+        }
+
+        transaction.Commit();
+    }
+
+    private void EnsureSchema()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        Execute(connection, null, @"CREATE TABLE IF NOT EXISTS Students (
+            Id INTEGER PRIMARY KEY, FirstName TEXT NOT NULL, LastName TEXT NOT NULL,
+            Phone TEXT NOT NULL, Email TEXT NOT NULL, DateOfBirth TEXT NOT NULL,
+            Notes TEXT NOT NULL, Active INTEGER NOT NULL);");
+        Execute(connection, null, @"CREATE TABLE IF NOT EXISTS Curriculum (
+            Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Category TEXT NOT NULL, SortOrder INTEGER NOT NULL);");
+        Execute(connection, null, @"CREATE TABLE IF NOT EXISTS Lessons (
+            Id INTEGER PRIMARY KEY, StudentId INTEGER NOT NULL, StartUtc TEXT NOT NULL,
+            DurationMinutes INTEGER NOT NULL, HourlyRate NUMERIC NOT NULL,
+            Location TEXT NOT NULL, Notes TEXT NOT NULL, Status INTEGER NOT NULL,
+            FOREIGN KEY(StudentId) REFERENCES Students(Id));");
+        Execute(connection, null, @"CREATE TABLE IF NOT EXISTS StudentProgress (
+            StudentId INTEGER NOT NULL, CurriculumStepId INTEGER NOT NULL, Status INTEGER NOT NULL,
+            CompletedOn TEXT NULL, Notes TEXT NOT NULL,
+            PRIMARY KEY(StudentId, CurriculumStepId),
+            FOREIGN KEY(StudentId) REFERENCES Students(Id),
+            FOREIGN KEY(CurriculumStepId) REFERENCES Curriculum(Id));");
+        Execute(connection, null, @"CREATE TABLE IF NOT EXISTS Invoices (
+            Id INTEGER PRIMARY KEY, StudentId INTEGER NOT NULL, InvoiceNumber TEXT NOT NULL UNIQUE,
+            IssueDate TEXT NOT NULL, DueDate TEXT NOT NULL, Amount NUMERIC NOT NULL, Status INTEGER NOT NULL,
+            FOREIGN KEY(StudentId) REFERENCES Students(Id));");
+        Execute(connection, null, @"CREATE TABLE IF NOT EXISTS InvoicePayments (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT, InvoiceId INTEGER NOT NULL, Amount NUMERIC NOT NULL,
+            PaidOn TEXT NOT NULL, FOREIGN KEY(InvoiceId) REFERENCES Invoices(Id));");
+    }
+
+    private void Load()
+    {
+        Students.Clear(); Lessons.Clear(); Curriculum.Clear(); Progress.Clear(); Invoices.Clear();
+        _studentId = _lessonId = _invoiceId = 0;
+
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT Id,FirstName,LastName,Phone,Email,DateOfBirth,Notes,Active FROM Students ORDER BY Id";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                Students.Add(new Student {
+                    Id = r.GetInt32(0), FirstName = r.GetString(1), LastName = r.GetString(2),
+                    Phone = r.GetString(3), Email = r.GetString(4),
+                    DateOfBirth = DateOnly.Parse(r.GetString(5)), Notes = r.GetString(6), Active = r.GetInt32(7) == 1 });
+            }
+        }
+
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT Id,Name,Category,SortOrder FROM Curriculum ORDER BY SortOrder";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                Curriculum.Add(new CurriculumStep { Id = r.GetInt32(0), Name = r.GetString(1), Category = r.GetString(2), Order = r.GetInt32(3) });
+        }
+
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT Id,StudentId,StartUtc,DurationMinutes,HourlyRate,Location,Notes,Status FROM Lessons ORDER BY StartUtc";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                Lessons.Add(new Lesson { Id = r.GetInt32(0), StudentId = r.GetInt32(1), Start = DateTime.Parse(r.GetString(2), null, DateTimeStyles.RoundtripKind),
+                    DurationMinutes = r.GetInt32(3), HourlyRate = r.GetDecimal(4), Location = r.GetString(5), Notes = r.GetString(6), Status = (LessonStatus)r.GetInt32(7) });
+        }
+
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT StudentId,CurriculumStepId,Status,CompletedOn,Notes FROM StudentProgress";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                Progress.Add(new StudentProgress { StudentId = r.GetInt32(0), CurriculumStepId = r.GetInt32(1),
+                    Status = (ProgressStatus)r.GetInt32(2), CompletedOn = r.IsDBNull(3) ? null : DateTime.Parse(r.GetString(3), null, DateTimeStyles.RoundtripKind), Notes = r.GetString(4) });
+        }
+
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT Id,StudentId,InvoiceNumber,IssueDate,DueDate,Amount,Status FROM Invoices ORDER BY Id";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var invoice = new Invoice { Id = r.GetInt32(0), StudentId = r.GetInt32(1), InvoiceNumber = r.GetString(2),
+                    IssueDate = DateOnly.Parse(r.GetString(3)), DueDate = DateOnly.Parse(r.GetString(4)), Amount = r.GetDecimal(5) };
+                var status = (InvoiceStatus)r.GetInt32(6);
+                if (status == InvoiceStatus.Cancelled) { /* status is intentionally immutable in the MVP */ }
+                Invoices.Add(invoice);
+
+                using var payment = connection.CreateCommand();
+                payment.CommandText = "SELECT COALESCE(SUM(Amount),0) FROM InvoicePayments WHERE InvoiceId=$id";
+                payment.Parameters.AddWithValue("$id", invoice.Id);
+                var paid = Convert.ToDecimal(payment.ExecuteScalar(), CultureInfo.InvariantCulture);
+                if (paid > 0) invoice.RecordPayment(paid);
+                if (status == InvoiceStatus.Overdue) invoice.MarkOverdue(invoice.DueDate.AddDays(1));
+            }
+        }
+
+        _studentId = Students.Count == 0 ? 0 : Students.Max(x => x.Id);
+        _lessonId = Lessons.Count == 0 ? 0 : Lessons.Max(x => x.Id);
+        _invoiceId = Invoices.Count == 0 ? 0 : Invoices.Max(x => x.Id);
+    }
+
+    private static void Execute(SqliteConnection connection, SqliteTransaction? transaction, string sql, params (string Name, object? Value)[] parameters)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value ?? DBNull.Value);
+        command.ExecuteNonQuery();
+    }
+
     public Student AddStudent(Student student)
     {
         if (string.IsNullOrWhiteSpace(student.FirstName)) throw new ArgumentException("First name is required.");
         if (string.IsNullOrWhiteSpace(student.LastName)) throw new ArgumentException("Last name is required.");
         if (!string.IsNullOrWhiteSpace(student.Email) && !student.Email.Contains('@')) throw new ArgumentException("Email address is invalid.");
 
-        var saved = new Student
-        {
-            Id = ++_studentId,
-            FirstName = student.FirstName.Trim(), LastName = student.LastName.Trim(),
-            Phone = student.Phone.Trim(), Email = student.Email.Trim(), DateOfBirth = student.DateOfBirth,
-            Notes = student.Notes.Trim(), Active = true
-        };
+        var saved = new Student { Id = ++_studentId, FirstName = student.FirstName.Trim(), LastName = student.LastName.Trim(),
+            Phone = student.Phone.Trim(), Email = student.Email.Trim(), DateOfBirth = student.DateOfBirth, Notes = student.Notes.Trim(), Active = true };
         Students.Add(saved);
         return saved;
     }
@@ -39,12 +211,8 @@ public sealed class InMemoryStore
         if (Lessons.Any(x => x.Status == LessonStatus.Scheduled && x.Start < lesson.Start.AddMinutes(lesson.DurationMinutes) && x.End > lesson.Start))
             throw new InvalidOperationException("The coach already has a lesson during this time.");
 
-        var saved = new Lesson
-        {
-            Id = ++_lessonId, StudentId = lesson.StudentId, Start = lesson.Start,
-            DurationMinutes = lesson.DurationMinutes, HourlyRate = lesson.HourlyRate,
-            Location = lesson.Location.Trim(), Notes = lesson.Notes.Trim(), Status = LessonStatus.Scheduled
-        };
+        var saved = new Lesson { Id = ++_lessonId, StudentId = lesson.StudentId, Start = lesson.Start,
+            DurationMinutes = lesson.DurationMinutes, HourlyRate = lesson.HourlyRate, Location = lesson.Location.Trim(), Notes = lesson.Notes.Trim(), Status = LessonStatus.Scheduled };
         Lessons.Add(saved);
         return saved;
     }
