@@ -300,7 +300,7 @@ public sealed class CourtBooksServiceTests
             first.Save();
 
             var second = new CourtBooksStore();
-            second.ConfigureDatabase($"Data Source={path};Foreign Keys=True");
+            second.ConfigureDatabase($"Data Source={path};Foreign Keys=True;Pooling=False");
 
             Assert.Single(second.Students);
             Assert.Equal("Persistent Student", second.Students[0].FullName);
