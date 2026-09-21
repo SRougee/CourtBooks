@@ -203,6 +203,28 @@ public sealed class CourtBooksStore
         return saved;
     }
 
+    public Student UpdateStudent(int studentId, string firstName, string lastName, string phone, string email, DateOnly dateOfBirth, string notes)
+    {
+        if (string.IsNullOrWhiteSpace(firstName)) throw new ArgumentException("First name is required.");
+        if (string.IsNullOrWhiteSpace(lastName)) throw new ArgumentException("Last name is required.");
+        if (!string.IsNullOrWhiteSpace(email) && !email.Contains('@')) throw new ArgumentException("Email address is invalid.");
+
+        var student = Students.SingleOrDefault(x => x.Id == studentId) ?? throw new KeyNotFoundException("Student not found.");
+        student.FirstName = firstName.Trim();
+        student.LastName = lastName.Trim();
+        student.Phone = phone.Trim();
+        student.Email = email.Trim();
+        student.DateOfBirth = dateOfBirth;
+        student.Notes = notes.Trim();
+        return student;
+    }
+
+    public void SetStudentActive(int studentId, bool active)
+    {
+        var student = Students.SingleOrDefault(x => x.Id == studentId) ?? throw new KeyNotFoundException("Student not found.");
+        student.Active = active;
+    }
+
     public Lesson AddLesson(Lesson lesson)
     {
         if (!Students.Any(s => s.Id == lesson.StudentId)) throw new ArgumentException("Student does not exist.");
