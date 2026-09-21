@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using CourtBooks.Core.Configuration;
 using Xunit;
 
@@ -68,7 +67,7 @@ public sealed class CourtBooksSettingsTests
 
         try
         {
-            Assert.Throws<JsonReaderException>(() => CourtBooksSettings.Load(path));
+            Assert.Throws<System.Text.Json.JsonReaderException>(() => CourtBooksSettings.Load(path));
         }
         finally
         {
