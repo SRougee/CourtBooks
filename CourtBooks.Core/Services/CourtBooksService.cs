@@ -15,6 +15,12 @@ public sealed class CourtBooksService
     public Student AddStudent(string firstName, string lastName, string phone, string email, DateOnly dob, string notes = "")
         => _store.AddStudent(new Student { FirstName = firstName, LastName = lastName, Phone = phone, Email = email, DateOfBirth = dob, Notes = notes });
 
+    public Student UpdateStudent(int studentId, string firstName, string lastName, string phone, string email, DateOnly dateOfBirth, string notes = "")
+        => _store.UpdateStudent(studentId, firstName, lastName, phone, email, dateOfBirth, notes);
+
+    public void SetStudentActive(int studentId, bool active)
+        => _store.SetStudentActive(studentId, active);
+
     public Lesson ScheduleLesson(int studentId, DateTime start, int durationMinutes, decimal hourlyRate, string location = "", string notes = "")
         => _store.AddLesson(new Lesson { StudentId = studentId, Start = start, DurationMinutes = durationMinutes, HourlyRate = hourlyRate, Location = location, Notes = notes });
 
