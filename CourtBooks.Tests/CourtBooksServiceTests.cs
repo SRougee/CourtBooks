@@ -50,6 +50,107 @@ public sealed class CourtBooksServiceTests
     }
 
     [Fact]
+    public void AddStudent_RejectsFutureDateOfBirth()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        Assert.Throws<ArgumentException>(() =>
+            service.AddStudent("Sam", "Lee", "", "", DateOnly.FromDateTime(DateTime.Today.AddDays(1))));
+    }
+
+    [Fact]
+    public void AddStudent_RejectsDuplicateEmail()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        service.AddStudent("Sam", "Lee", "", "sam@example.com", new DateOnly(2010, 1, 1));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            service.AddStudent("Other", "Person", "", "SAM@example.com", new DateOnly(2011, 1, 1)));
+    }
+
+    [Fact]
+    public void ScheduleLesson_RejectsInactiveStudent()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+        service.SetStudentActive(student.Id, false);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            service.ScheduleLesson(student.Id, DateTime.Now.AddDays(1), 60, 300));
+    }
+
+    [Fact]
+    public void ScheduleLesson_RejectsPastLesson()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+
+        Assert.Throws<ArgumentException>(() =>
+            service.ScheduleLesson(student.Id, DateTime.Now.AddMinutes(-5), 60, 300));
+    }
+
+    [Fact]
+    public void RescheduleLesson_UpdatesFutureTime()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+        var lesson = service.ScheduleLesson(student.Id, DateTime.Now.AddDays(1), 60, 300);
+
+        var updated = service.RescheduleLesson(lesson.Id, DateTime.Now.AddDays(2), 90);
+
+        Assert.Equal(90, updated.DurationMinutes);
+        Assert.True(updated.Start > DateTime.Now.AddDays(1));
+    }
+
+    [Fact]
+    public void CancelInvoice_RemovesItFromOutstandingBalance()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+        var invoice = service.InvoiceStudent(student.Id, 1200, DateOnly.FromDateTime(DateTime.Today));
+
+        service.CancelInvoice(invoice.Id);
+
+        Assert.Equal(InvoiceStatus.Cancelled, invoice.Status);
+        Assert.Equal(0, service.GetOutstandingBalance(student.Id));
+    }
+
+    [Fact]
+    public void CancelInvoice_RejectsPartiallyPaidInvoice()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+        var invoice = service.InvoiceStudent(student.Id, 1200, DateOnly.FromDateTime(DateTime.Today));
+        invoice.RecordPayment(100);
+
+        Assert.Throws<InvalidOperationException>(() => service.CancelInvoice(invoice.Id));
+    }
+
+    [Fact]
+    public void RecordPayment_RejectsFuturePaymentDate()
+    {
+        var service = new CourtBooksService(new CourtBooksStore());
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+        var invoice = service.InvoiceStudent(student.Id, 1200, DateOnly.FromDateTime(DateTime.Today));
+
+        Assert.Throws<ArgumentException>(() =>
+            service.RecordPayment(invoice.Id, 100, DateTime.Now.AddDays(1)));
+    }
+
+    [Fact]
+    public void RecordPayment_StoresMethodAndReference()
+    {
+        var store = new CourtBooksStore();
+        var service = new CourtBooksService(store);
+        var student = service.AddStudent("Sam", "Lee", "", "", new DateOnly(2010, 1, 1));
+        var invoice = service.InvoiceStudent(student.Id, 1200, DateOnly.FromDateTime(DateTime.Today));
+
+        service.RecordPayment(invoice.Id, 500, DateTime.Now, PaymentMethod.EFT, "ABC123");
+
+        Assert.Equal(PaymentMethod.EFT, store.Payments[0].Method);
+        Assert.Equal("ABC123", store.Payments[0].Reference);
+    }
+
+    [Fact]
     public void ScheduleLesson_RejectsUnknownStudent()
     {
         var service = new CourtBooksService(new CourtBooksStore());
