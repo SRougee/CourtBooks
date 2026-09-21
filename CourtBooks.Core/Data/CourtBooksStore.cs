@@ -32,6 +32,22 @@ public sealed class CourtBooksStore
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
         using var transaction = connection.BeginTransaction();
+        foreach (var invoice in Invoices)
+        {
+            var recorded = Payments.Where(x => x.InvoiceId == invoice.Id).Sum(x => x.Amount);
+            if (invoice.AmountPaid > recorded)
+            {
+                Payments.Add(new InvoicePayment
+                {
+                    Id = Payments.Count == 0 ? 1 : Payments.Max(x => x.Id) + 1,
+                    InvoiceId = invoice.Id,
+                    Amount = invoice.AmountPaid - recorded,
+                    PaidOn = DateTime.Now
+                });
+            }
+        }
+
+
 
         Execute(connection, transaction, "DELETE FROM StudentProgress;");
         Execute(connection, transaction, "DELETE FROM Lessons;");
