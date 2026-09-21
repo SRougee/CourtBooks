@@ -194,6 +194,88 @@ app.post("/api/lessons", async (c) => {
   return c.json(created, 201);
 });
 
+app.put("/api/lessons/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: "Lesson ID must be a positive integer." }, 400);
+  }
+
+  let payload: LessonPayload;
+
+  try {
+    payload = await c.req.json<LessonPayload>();
+  } catch {
+    return c.json({ error: "Request body must be valid JSON." }, 400);
+  }
+
+  const validation = validateLessonPayload(payload);
+
+  if ("error" in validation) {
+    return c.json({ error: validation.error }, 400);
+  }
+
+  const { studentId, startUtc, durationMinutes, hourlyRate, location, notes } = validation.value;
+
+  const existing = await c.env.DB
+    .prepare("SELECT Id, Status FROM Lessons WHERE Id = ?")
+    .bind(id)
+    .first<{ Id: number; Status: number }>();
+
+  if (!existing) {
+    return c.json({ error: "Lesson not found." }, 404);
+  }
+
+  const student = await c.env.DB
+    .prepare("SELECT Id FROM Students WHERE Id = ? AND Active = 1")
+    .bind(studentId)
+    .first();
+
+  if (!student) {
+    return c.json({ error: "Active student not found." }, 404);
+  }
+
+  const startMs = Date.parse(startUtc);
+  const endMs = startMs + durationMinutes * 60 * 1000;
+
+  if (startMs <= Date.now()) {
+    return c.json({ error: "Lesson start time must be in the future." }, 400);
+  }
+
+  const scheduledLessons = await c.env.DB
+    .prepare("SELECT Id, StartUtc, DurationMinutes FROM Lessons WHERE Status = 0 AND Id != ?")
+    .bind(id)
+    .all();
+
+  const overlapping = scheduledLessons.results.some((row) => {
+    const existingStart = Date.parse(String(row.StartUtc));
+    const existingDuration = Number(row.DurationMinutes);
+    const existingEnd = existingStart + existingDuration * 60 * 1000;
+
+    return startMs < existingEnd && endMs > existingStart;
+  });
+
+  if (overlapping) {
+    return c.json({ error: "The lesson overlaps an existing scheduled lesson." }, 409);
+  }
+
+  await c.env.DB
+    .prepare(
+      "UPDATE Lessons SET StudentId = ?, StartUtc = ?, DurationMinutes = ?, HourlyRate = ?, Location = ?, Notes = ? WHERE Id = ?"
+    )
+    .bind(studentId, startUtc, durationMinutes, hourlyRate, location, notes, id)
+    .run();
+
+  const updated = await c.env.DB
+    .prepare(
+      "SELECT l.Id, l.StudentId, s.FirstName, s.LastName, l.StartUtc, l.DurationMinutes, l.HourlyRate, l.Location, l.Notes, l.Status FROM Lessons l INNER JOIN Students s ON s.Id = l.StudentId WHERE l.Id = ?"
+    )
+    .bind(id)
+    .first();
+
+  return c.json(updated);
+});
+
 app.put("/api/lessons/:id/status", async (c) => {
   const id = Number(c.req.param("id"));
 
