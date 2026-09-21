@@ -24,16 +24,22 @@ public sealed class CourtBooksService
     public Lesson ScheduleLesson(int studentId, DateTime start, int durationMinutes, decimal hourlyRate, string location = "", string notes = "")
         => _store.AddLesson(new Lesson { StudentId = studentId, Start = start, DurationMinutes = durationMinutes, HourlyRate = hourlyRate, Location = location, Notes = notes });
 
-    public InvoicePayment RecordPayment(int invoiceId, decimal amount, DateTime? paidOn = null)
+    public InvoicePayment RecordPayment(int invoiceId, decimal amount, DateTime? paidOn = null, PaymentMethod method = PaymentMethod.Other, string reference = "")
     {
         var invoice = _store.Invoices.SingleOrDefault(x => x.Id == invoiceId) ?? throw new KeyNotFoundException("Invoice not found.");
+        var paymentDate = paidOn ?? DateTime.Now;
+        var today = DateTime.Now;
+        if (paymentDate > today) throw new ArgumentException("Payment date cannot be in the future.");
+        if (DateOnly.FromDateTime(paymentDate) < invoice.IssueDate) throw new ArgumentException("Payment date cannot be before the invoice issue date.");
         invoice.RecordPayment(amount);
         var payment = new InvoicePayment
         {
             Id = _store.Payments.Count == 0 ? 1 : _store.Payments.Max(x => x.Id) + 1,
             InvoiceId = invoiceId,
             Amount = amount,
-            PaidOn = paidOn ?? DateTime.Now
+            PaidOn = paymentDate,
+            Method = method,
+            Reference = reference.Trim()
         };
         _store.Payments.Add(payment);
         return payment;
@@ -42,7 +48,31 @@ public sealed class CourtBooksService
     public void UpdateLessonStatus(int lessonId, LessonStatus status)
     {
         var lesson = _store.Lessons.SingleOrDefault(x => x.Id == lessonId) ?? throw new KeyNotFoundException("Lesson not found.");
+        if (lesson.Status != LessonStatus.Scheduled && status == LessonStatus.Scheduled)
+            throw new InvalidOperationException("Completed, cancelled or no-show lessons cannot be reopened as scheduled.");
         lesson.Status = status;
+    }
+
+    public Lesson RescheduleLesson(int lessonId, DateTime newStart, int? durationMinutes = null, string? location = null)
+    {
+        var lesson = _store.Lessons.SingleOrDefault(x => x.Id == lessonId) ?? throw new KeyNotFoundException("Lesson not found.");
+        if (lesson.Status != LessonStatus.Scheduled) throw new InvalidOperationException("Only scheduled lessons can be rescheduled.");
+        if (newStart <= DateTime.Now) throw new ArgumentException("Rescheduled lessons must be in the future.");
+        var duration = durationMinutes ?? lesson.DurationMinutes;
+        if (duration <= 0) throw new ArgumentOutOfRangeException(nameof(durationMinutes));
+        var newEnd = newStart.AddMinutes(duration);
+        if (_store.Lessons.Any(x => x.Id != lesson.Id && x.Status == LessonStatus.Scheduled && x.Start < newEnd && x.End > newStart))
+            throw new InvalidOperationException("The coach already has a lesson during this time.");
+        lesson.Start = newStart;
+        lesson.DurationMinutes = duration;
+        if (location is not null) lesson.Location = location.Trim();
+        return lesson;
+    }
+
+    public void CancelInvoice(int invoiceId)
+    {
+        var invoice = _store.Invoices.SingleOrDefault(x => x.Id == invoiceId) ?? throw new KeyNotFoundException("Invoice not found.");
+        invoice.Cancel();
     }
 
     public Invoice InvoiceStudent(int studentId, decimal amount, DateOnly issueDate, int paymentTermsDays = 30)
@@ -55,7 +85,7 @@ public sealed class CourtBooksService
     }
 
     public decimal GetOutstandingBalance(int? studentId = null)
-        => _store.Invoices.Where(x => studentId is null || x.StudentId == studentId).Sum(x => x.Balance);
+        => _store.Invoices.Where(x => x.Status != InvoiceStatus.Cancelled && (studentId is null || x.StudentId == studentId)).Sum(x => x.Balance);
 
     public int GetProgressPercent(int studentId)
     {
