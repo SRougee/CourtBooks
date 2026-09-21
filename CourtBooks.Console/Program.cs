@@ -34,6 +34,7 @@ while (true)
         Console.WriteLine("6. Create invoice");
         Console.WriteLine("7. Record payment");
         Console.WriteLine("8. Reports");
+        Console.WriteLine("9. Recurring lessons");
         Console.WriteLine("0. Exit");
         Console.WriteLine("\nTip: type M at any input prompt to return here.");
         Console.Write("\nChoose: ");
@@ -48,6 +49,7 @@ while (true)
             case "6": Invoice(app); break;
             case "7": Payment(app, store); break;
             case "8": Reports(app, store); break;
+            case "9": RecurringLessons(app); break;
             case "0": store.Save(); return;
             default: Pause("Invalid option."); break;
         }
@@ -301,6 +303,32 @@ static void Payment(CourtBooksService app, CourtBooksStore store)
     var reference = Read("Payment reference");
     var payment = app.RecordPayment(invoice.Id, paymentAmount, DateTime.Now, (PaymentMethod)(methodChoice - 1), reference);
     Console.WriteLine($"Payment recorded on {payment.PaidOn:g}. Balance: {invoice.Balance:C2}. Status: {invoice.Status}");
+    Pause();
+}
+
+static void RecurringLessons(CourtBooksService app)
+{
+    Console.Clear();
+    Console.WriteLine("RECURRING LESSONS");
+    Console.WriteLine("-----------------");
+    StudentsMini(app);
+    var studentId = ReadInt("Student ID");
+    var first = ReadDateTime("First lesson (yyyy-MM-dd HH:mm)");
+    var duration = ReadInt("Duration minutes", 60);
+    var rate = ReadDecimal("Hourly rate", 300);
+    var occurrences = ReadInt("Number of lessons", 4);
+    var interval = ReadInt("Interval in days", 7);
+    var lessons = app.ScheduleRecurringLessons(studentId, new RecurringLessonPattern
+    {
+        FirstStart = first,
+        DurationMinutes = duration,
+        HourlyRate = rate,
+        Occurrences = occurrences,
+        IntervalDays = interval,
+        Location = Read("Location"),
+        Notes = Read("Notes")
+    });
+    Console.WriteLine($"Created {lessons.Count} recurring lessons.");
     Pause();
 }
 
