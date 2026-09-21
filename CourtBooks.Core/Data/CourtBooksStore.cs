@@ -192,6 +192,7 @@ public sealed class CourtBooksStore
         }
 
         var overdueInvoiceIds = new HashSet<int>();
+        var cancelledInvoiceIds = new HashSet<int>();
 
         using (var cmd = connection.CreateCommand())
         {
@@ -203,6 +204,7 @@ public sealed class CourtBooksStore
                     IssueDate = DateOnly.Parse(r.GetString(3)), DueDate = DateOnly.Parse(r.GetString(4)), Amount = r.GetDecimal(5) };
                 var status = (InvoiceStatus)r.GetInt32(6);
                 if (status == InvoiceStatus.Overdue) overdueInvoiceIds.Add(invoice.Id);
+                if (status == InvoiceStatus.Cancelled) cancelledInvoiceIds.Add(invoice.Id);
                 Invoices.Add(invoice);
             }
         }
@@ -226,6 +228,12 @@ public sealed class CourtBooksStore
                 var invoice = Invoices.SingleOrDefault(x => x.Id == payment.InvoiceId);
                 invoice?.RecordPayment(payment.Amount);
             }
+        }
+
+        foreach (var invoiceId in cancelledInvoiceIds)
+        {
+            var invoice = Invoices.SingleOrDefault(x => x.Id == invoiceId);
+            if (invoice is not null && invoice.AmountPaid == 0) invoice.Cancel();
         }
 
         foreach (var invoiceId in overdueInvoiceIds)
