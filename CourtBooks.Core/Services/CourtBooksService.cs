@@ -24,6 +24,34 @@ public sealed class CourtBooksService
     public Lesson ScheduleLesson(int studentId, DateTime start, int durationMinutes, decimal hourlyRate, string location = "", string notes = "")
         => _store.AddLesson(new Lesson { StudentId = studentId, Start = start, DurationMinutes = durationMinutes, HourlyRate = hourlyRate, Location = location, Notes = notes });
 
+    public IReadOnlyList<Lesson> ScheduleRecurringLessons(int studentId, RecurringLessonPattern pattern)
+    {
+        if (pattern.Occurrences is < 1 or > 52) throw new ArgumentOutOfRangeException(nameof(pattern.Occurrences), "Occurrences must be between 1 and 52.");
+        if (pattern.IntervalDays <= 0) throw new ArgumentOutOfRangeException(nameof(pattern.IntervalDays));
+        if (pattern.DurationMinutes <= 0) throw new ArgumentOutOfRangeException(nameof(pattern.DurationMinutes));
+        if (pattern.HourlyRate < 0) throw new ArgumentOutOfRangeException(nameof(pattern.HourlyRate));
+
+        var starts = Enumerable.Range(0, pattern.Occurrences)
+            .Select(i => pattern.FirstStart.AddDays((double)(i * pattern.IntervalDays)))
+            .ToList();
+
+        var existing = new List<Lesson>();
+        foreach (var start in starts)
+        {
+            if (start <= DateTime.Now) throw new ArgumentException("All recurring lessons must be in the future.");
+            if (existing.Any(x => x.Start < start.AddMinutes(pattern.DurationMinutes) && x.End > start))
+                throw new InvalidOperationException("The recurring lessons would overlap each other.");
+            if (_store.Lessons.Any(x => x.Status == LessonStatus.Scheduled && x.Start < start.AddMinutes(pattern.DurationMinutes) && x.End > start))
+                throw new InvalidOperationException($"The coach already has a lesson during {start:g}.");
+            existing.Add(new Lesson { StudentId = studentId, Start = start, DurationMinutes = pattern.DurationMinutes, HourlyRate = pattern.HourlyRate, Location = pattern.Location, Notes = pattern.Notes });
+        }
+
+        var result = new List<Lesson>();
+        foreach (var lesson in existing)
+            result.Add(_store.AddLesson(lesson));
+        return result;
+    }
+
     public InvoicePayment RecordPayment(int invoiceId, decimal amount, DateTime? paidOn = null, PaymentMethod method = PaymentMethod.Other, string reference = "")
     {
         var invoice = _store.Invoices.SingleOrDefault(x => x.Id == invoiceId) ?? throw new KeyNotFoundException("Invoice not found.");
